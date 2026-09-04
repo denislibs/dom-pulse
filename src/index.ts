@@ -61,7 +61,13 @@ export const DomPulse = {
       cleanups.push(restoreWrites);
       const restoreReflow = installReflowPatches(log, {
         onEvent: (ev, hit) => store.addReflow(ev, hit),
-        onElement: (el, hit, time) => store.addElementReflow(el, hit, time),
+        // Gate on the same isIgnored + include/exclude rule the mutation path runs
+        // through (observer.shouldTrack, backed by buildEvents' isTracked): without it, an
+        // element-reflow hit would bypass both DOM Pulse's "never observe our own UI" rule
+        // and the HUD's filter boxes, since installReflowPatches itself only knows the read
+        // element, not what is in scope. `observer` is assigned below; by the time a real
+        // read fires this callback, start() has finished and it is always set.
+        onElement: (el, hit, time) => { if (observer?.shouldTrack(el)) store.addElementReflow(el, hit, time); },
       });
       cleanups.push(restoreReflow);
       observer = createObserver({ store, log, isIgnored }, { include: opts.include, exclude: opts.exclude, kinds: new Set(ALL_KINDS) });

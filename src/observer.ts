@@ -56,6 +56,21 @@ function lookahead(records: MutationRecord[], i: number, pred: (r: MutationRecor
   return undefined;
 }
 
+/**
+ * Whether `el` is in scope for DOM Pulse at all: not one of DOM Pulse's own nodes, and
+ * matching the current include/exclude filters. This is the single gate the mutation
+ * path runs every target through, and the element-reflow path (installed in index.ts)
+ * reuses it via `shouldTrack` on the observer instance below -- so the HUD's filter
+ * boxes and the "never observe our own UI" rule apply identically to both the mutation
+ * events a write produces and the element rows a bare forced-layout read can create.
+ */
+function isTracked(el: Element, isIgnored: (node: Node) => boolean, filters: ObserverFilters): boolean {
+  if (isIgnored(el)) return false;
+  if (filters.include && !matches(el, filters.include)) return false;
+  if (filters.exclude && matches(el, filters.exclude)) return false;
+  return true;
+}
+
 export function buildEvents(records: MutationRecord[], deps: ObserverDeps, filters: ObserverFilters): PulseEvent[] {
   const now = (deps.now ?? (() => performance.now()))();
   const out: PulseEvent[] = [];
@@ -63,13 +78,11 @@ export function buildEvents(records: MutationRecord[], deps: ObserverDeps, filte
     const kind = rec.type as MutationKind;
     if (!filters.kinds.has(kind)) return;
     const target = elementFor(rec.target);
-    if (!target || deps.isIgnored(target)) return;
+    if (!target || !isTracked(target, deps.isIgnored, filters)) return;
     if (kind === 'childList') {
       const touched = [...rec.addedNodes, ...rec.removedNodes];
       if (touched.length > 0 && touched.every(deps.isIgnored)) return;
     }
-    if (filters.include && !matches(target, filters.include)) return;
-    if (filters.exclude && matches(target, filters.exclude)) return;
 
     let diff: Diff;
     let nodesAffected: number;
@@ -133,5 +146,13 @@ export function createObserver(deps: ObserverDeps, initial: ObserverFilters) {
   return {
     setFilters(f: Partial<ObserverFilters>) { filters = { ...filters, ...f, ...validate(f) }; },
     disconnect() { mo.disconnect(); },
+    /**
+     * Whether `el` is in scope under the observer's current isIgnored + include/exclude
+     * state -- the same predicate `buildEvents` runs every mutation target through, kept
+     * live across `setFilters`. Callers outside the observer (the element-reflow sink in
+     * index.ts) use this instead of re-deriving the rule, so there is exactly one place
+     * that knows what "in scope" means.
+     */
+    shouldTrack(el: Element): boolean { return isTracked(el, deps.isIgnored, filters); },
   };
 }

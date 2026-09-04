@@ -81,7 +81,8 @@ export class WriteLog {
   /**
    * The write a layout read should be blamed on: the newest record of this frame
    * whose target is the element being read, or an ancestor or descendant of it.
-   * Callers fall back to `last()` when nothing is related.
+   * When nothing is related, callers charge the read element itself instead of
+   * falling back to any write record -- see `installReflowPatches` in cost/reflow.ts.
    */
   forRead(node: Node): WriteRecord | null {
     for (let i = this.records.length - 1; i >= 0; i--) {

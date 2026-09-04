@@ -57,8 +57,9 @@ function elementRead(node: Node | null): Element | null {
  * write records is recognized as a forced synchronous reflow.
  *
  * A hit belongs to the element whose layout was read. Where a write record for that element
- * (or for an ancestor or a descendant of it) exists, the event that record produces is its
- * home -- same element, and the event carries the read into the HUD's mutation lane; if the
+ * (or for an ancestor or a descendant of it, per `WriteLog.forRead`) exists, the event that
+ * record produces is its home -- possibly an ancestor's or a descendant's event, not the read
+ * element's own -- and the event carries the read into the HUD's mutation lane; if the
  * record already has its PulseEvent, `sink.onEvent` fires immediately so callers (e.g. the
  * overlay) can react without waiting for the next paint. Where nothing written this frame
  * relates to the element, the hit goes straight to that element through `sink.onElement`:
