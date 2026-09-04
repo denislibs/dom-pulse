@@ -37,6 +37,15 @@ export function matchShift(
 const toRect = (r: { x: number; y: number; width: number; height: number }): Rect => ({ x: r.x, y: r.y, width: r.width, height: r.height });
 
 /**
+ * Forward tolerance, in ms, added past a layout-shift entry's `startTime` when building
+ * its candidate window. A `PulseEvent`'s `time` is stamped when the MutationObserver
+ * batch that produced it is delivered, which can land marginally after the browser's own
+ * timestamp for the layout shift that same DOM write caused. Without this slack, a
+ * genuine cause whose event timestamp falls just after `startTime` would be excluded.
+ */
+const FORWARD_SLACK_MS = 50;
+
+/**
  * Observes `layout-shift` performance entries and attributes each one to a recent
  * PulseEvent, recording the shift against that element via `store.addShift`. A shift
  * that cannot be attributed still counts toward `store.totalShift`. Measures element
@@ -50,7 +59,9 @@ export function watchLayoutShifts(store: Store, windowMs = 100): () => void {
   const po = new PerformanceObserver(list => {
     try {
       for (const raw of list.getEntries() as any[]) {
-        const candidates = store.events().filter(ev => ev.time >= raw.startTime - windowMs && ev.time <= raw.startTime + 50);
+        // Window reaches windowMs into the past and FORWARD_SLACK_MS into the future of
+        // startTime, to tolerate the MutationObserver-delivery clock skew noted above.
+        const candidates = store.events().filter(ev => ev.time >= raw.startTime - windowMs && ev.time <= raw.startTime + FORWARD_SLACK_MS);
         const sources: ShiftSource[] = (raw.sources ?? []).map((s: any) => ({ node: s.node ?? null, previousRect: toRect(s.previousRect), currentRect: toRect(s.currentRect) }));
         const m = matchShift({ value: raw.value, startTime: raw.startTime, sources }, candidates, rectOf);
         if (m) store.addShift(m.event, raw.value, m.rects, performance.now());
