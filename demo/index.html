@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DOM Pulse demo</title>
+<style>
+  body { font: 14px system-ui, sans-serif; margin: 0; padding: 24px; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  button { padding: 6px 12px; }
+  #banner { background: #fde68a; padding: 40px; margin-bottom: 16px; }
+  #badge { display: inline-block; padding: 4px 8px; border: 1px solid #999; }
+  #badge.on { background: #bfdbfe; }
+  #list li { padding: 2px 6px; border-bottom: 1px solid #eee; }
+  .row { height: 18px; background: #e5e7eb; margin: 2px 0; }
+</style>
+</head>
+<body>
+<h1>DOM Pulse demo</h1>
+<div class="toolbar">
+  <button id="btn-flip">Flip class 3 s</button>
+  <button id="btn-text">Text tick 3 s</button>
+  <button id="btn-mass">Mass insert 500</button>
+  <button id="btn-recreate">Recreate list</button>
+  <button id="btn-thrash">Layout thrash</button>
+  <button id="btn-shift">Layout shift</button>
+</div>
+<div id="content">
+  <p>Counter: <span id="counter">0</span> · <span id="badge">badge</span></p>
+  <div id="rows"></div>
+  <ul id="list"></ul>
+</div>
+<script>
+  const $ = s => document.querySelector(s);
+  const list = $('#list'), rows = $('#rows');
+  for (let i = 0; i < 50; i++) { const r = document.createElement('div'); r.className = 'row'; r.style.width = (100 + i * 4) + 'px'; rows.appendChild(r); }
+  const fill = n => { list.innerHTML = Array.from({ length: n }, (_, i) => `<li class="item">item ${i}</li>`).join(''); };
+  fill(20);
+  const burst = (fn, ms, total) => { const id = setInterval(fn, ms); setTimeout(() => clearInterval(id), total); };
+
+  $('#btn-flip').onclick = () => burst(() => $('#badge').classList.toggle('on'), 50, 3000);
+  let n = 0;
+  $('#btn-text').onclick = () => burst(() => { $('#counter').firstChild.data = String(++n); }, 100, 3000);
+  $('#btn-mass').onclick = () => fill(500);
+  $('#btn-recreate').onclick = () => { const items = [...list.children]; items.forEach(li => li.remove()); items.forEach(li => list.appendChild(li.cloneNode(true))); };
+  $('#btn-thrash').onclick = () => { for (const r of rows.children) r.style.width = (r.offsetWidth + 1) + 'px'; };
+  $('#btn-shift').onclick = () => { const b = document.createElement('div'); b.id = 'banner'; b.textContent = 'banner'; $('#content').prepend(b); setTimeout(() => b.remove(), 1000); };
+</script>
+<script src="../dist/dom-pulse.js"></script>
+</body>
+</html>
