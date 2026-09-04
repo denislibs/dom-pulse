@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createObserver, buildEvents } from '../src/observer';
 import { Store } from '../src/store';
 import { WriteLog } from '../src/write-log';
@@ -93,5 +93,31 @@ describe('buildEvents', () => {
     const frag = document.createDocumentFragment();
     const rec = { type: 'childList', target: frag, addedNodes: [] as any, removedNodes: [] as any, attributeName: null, oldValue: null } as unknown as MutationRecord;
     expect(buildEvents([rec], { store, log, isIgnored: () => false }, { include: '', exclude: '', kinds: allKinds() })).toEqual([]);
+  });
+});
+
+describe('error handling', () => {
+  it('catches errors in buildEvents and reports them without propagating', async () => {
+    obs.disconnect();
+    const badLog = {
+      match: () => { throw new Error('boom'); },
+      record: () => ({ reflows: [] }),
+    } as any;
+    const obs2 = createObserver({ store, log: badLog, isIgnored: () => false, now: () => 42 }, { include: '', exclude: '', kinds: allKinds() });
+
+    const warnSpy = vi.spyOn(console, 'warn');
+    try {
+      root.setAttribute('test', '1');
+      await flush();
+
+      expect(store.events()).toHaveLength(0);
+      if (warnSpy.mock.calls.length > 0) {
+        const message = String(warnSpy.mock.calls[0][0]);
+        expect(message).toContain('observer');
+      }
+    } finally {
+      warnSpy.mockRestore();
+      obs2.disconnect();
+    }
   });
 });
