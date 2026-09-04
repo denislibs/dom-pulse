@@ -1,4 +1,4 @@
-/** Counts events whose timestamp is within (now - windowMs, now]. */
+/** Counts events whose timestamp is within [now - windowMs, now]. */
 export class SlidingCounter {
   private times: number[] = [];
 
