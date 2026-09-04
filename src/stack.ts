@@ -8,7 +8,19 @@ export const INTERNAL_PREFIX = '__domPulse_';
 const CHROME = /^\s*at (?:(.*?) \()?(.+?):(\d+):(\d+)\)?\s*$/;
 const FIREFOX = /^(.*?)@(.+?):(\d+):(\d+)\s*$/;
 
-export function parseStack(raw: string | undefined, selfFile?: string, limit = 12): StackFrame[] {
+/**
+ * Parses a captured stack and drops DOM Pulse's own frames: everything up to and
+ * including the last frame whose function name carries INTERNAL_PREFIX.
+ *
+ * The prefix is the only marker used. An earlier version also cut every frame whose
+ * file matched DOM Pulse's own script URL, but that URL had to be guessed from the
+ * stack when document.currentScript is null (always, for ESM), and a consumer who
+ * bundles DOM Pulse into their own app.js then had every one of their frames cut --
+ * every event reported "unknown source". The prefix match needs no guessing, cannot
+ * match page code, and survives minification by construction: the wrappers are
+ * created as computed-name object methods, so the name is a string literal.
+ */
+export function parseStack(raw: string | undefined, limit = 12): StackFrame[] {
   if (!raw) return [];
   const frames: StackFrame[] = [];
   for (const line of raw.split('\n')) {
@@ -24,7 +36,7 @@ export function parseStack(raw: string | undefined, selfFile?: string, limit = 1
   }
   let cut = -1;
   frames.forEach((f, i) => {
-    if (f.fn.includes(INTERNAL_PREFIX) || (selfFile !== undefined && f.file === selfFile)) cut = i;
+    if (f.fn.includes(INTERNAL_PREFIX)) cut = i;
   });
   return frames.slice(cut + 1, cut + 1 + limit);
 }

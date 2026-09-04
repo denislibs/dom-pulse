@@ -21,6 +21,10 @@ tr[data-i]{cursor:pointer}tr[data-i]:hover{background:#1f2937}tr.sel{background:
 .lane-title{color:#fff;font-weight:700;margin-bottom:4px}
 .ev{padding:2px 0;border-bottom:1px dashed #1f2937;word-break:break-all}
 .k{display:inline-block;min-width:44px;font-weight:700}.k.childList{color:#22c55e}.k.attributes{color:#3b82f6}.k.characterData{color:#eab308}
+.ev{cursor:pointer}.ev .tog{color:#6b7280;margin-right:3px}
+.ev-detail{padding:2px 0 4px 16px;border-bottom:1px dashed #1f2937;color:#9ca3af}
+.det-h{color:#d1d5db;margin-top:2px}.det-h b{color:#fff}
+.frame{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:8px}.frame .loc{color:#6b7280}
 .ev ins{color:#86efac;text-decoration:none}.ev del{color:#fca5a5}.ev mark{background:#78350f;color:#fde68a}.meta{color:#9ca3af}
 .sources{border-top:1px solid #374151;padding:4px 0}
 .src{display:flex;justify-content:space-between;gap:8px;padding:2px 8px;cursor:pointer}.src:hover{background:#1f2937}.src.active{background:#3f3f46}

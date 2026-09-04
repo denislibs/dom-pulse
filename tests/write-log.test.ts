@@ -14,8 +14,47 @@ describe('WriteLog', () => {
     const el = document.createElement('div');
     tick(5);
     const r = log.record(el, 'stack');
-    expect(r).toMatchObject({ target: el, stack: 'stack', time: 5, reflows: [], event: null, matched: false });
+    expect(r).toMatchObject({ target: el, stack: 'stack', time: 5, reflows: [], event: null, matched: false, hint: null });
     expect(log.size).toBe(1);
+  });
+  it('skips records whose hint cannot have produced the mutation', () => {
+    const { log } = make();
+    const el = document.createElement('div');
+    const noop = log.record(el, 'removeAttribute', { kind: 'attributes', attr: 'nonexistent' });
+    const real = log.record(el, 'setAttribute', { kind: 'attributes', attr: 'data-x' });
+    expect(log.match(el, 'attributes', 'data-x')).toBe(real);
+    expect(noop.matched).toBe(false);
+    // The kind has to fit too: a childList mutation cannot come from an attribute write.
+    expect(log.match(el, 'childList', null)).toBeNull();
+    // Attribute names are compared case-insensitively (setAttribute lower-cases them).
+    const upper = log.record(el, 'setAttribute', { kind: 'attributes', attr: 'DATA-Y' });
+    expect(log.match(el, 'attributes', 'data-y')).toBe(upper);
+  });
+  it('hands the orphaned reflow hits of no-op writes to the real event', () => {
+    const { log } = make();
+    const el = document.createElement('div');
+    const noop = log.record(el, 'noop', { kind: 'attributes', attr: 'gone' });
+    const hit = { api: 'offsetWidth', delay: 1, stack: [], source: null };
+    noop.reflows.push(hit);
+    log.record(el, 'real', { kind: 'attributes', attr: 'data-x' });
+    log.match(el, 'attributes', 'data-x');
+    expect(log.takeOrphanReflows(el)).toEqual([hit]);
+    // Taken once only.
+    expect(log.takeOrphanReflows(el)).toEqual([]);
+  });
+  it('finds the newest record related to a read element', () => {
+    const { log } = make();
+    const parent = document.createElement('ul');
+    const child = document.createElement('li');
+    parent.appendChild(child);
+    const other = document.createElement('div');
+    const rParent = log.record(parent, 'p');
+    log.record(other, 'o');
+    expect(log.forRead(child)).toBe(rParent);   // ancestor write
+    expect(log.forRead(parent)).toBe(rParent);
+    const rChild = log.record(child, 'c');
+    expect(log.forRead(parent)).toBe(rChild);   // descendant write, newer
+    expect(log.forRead(document.createElement('i'))).toBeNull();
   });
   it('matches oldest unmatched record for a target, then falls back to newest', () => {
     const { log } = make();

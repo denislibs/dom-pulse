@@ -22,9 +22,17 @@ describe('parseStack', () => {
     expect(frames.map(f => f.fn)).toEqual(['render', '', 'async load']);
     expect(frames[0]).toEqual({ fn: 'render', file: 'http://localhost/app/list.js?v=3', line: 42, column: 13 });
   });
-  it('drops frames from selfFile too', () => {
-    const raw = 'Error\n    at helper (http://x/dom-pulse.js:1:1)\n    at user (http://x/app.js:2:2)';
-    expect(parseStack(raw, 'http://x/dom-pulse.js').map(f => f.fn)).toEqual(['user']);
+  it('keeps user frames when DOM Pulse is bundled into the page script', () => {
+    // Bundled build: DOM Pulse's own frames and the page's frames share one file.
+    // Only the internal-prefix marker may cut, so the user frames must survive.
+    const raw = [
+      'Error',
+      '    at capture (http://x/app.js:1:1)',
+      `    at ${INTERNAL_PREFIX}setAttribute (http://x/app.js:2:2)`,
+      '    at render (http://x/app.js:3:3)',
+      '    at onClick (http://x/app.js:4:4)',
+    ].join('\n');
+    expect(parseStack(raw).map(f => f.fn)).toEqual(['render', 'onClick']);
   });
   it('parses Firefox frames', () => {
     const frames = parseStack(firefox);
@@ -34,7 +42,7 @@ describe('parseStack', () => {
     expect(parseStack(undefined)).toEqual([]);
   });
   it('respects limit', () => {
-    expect(parseStack(chrome, undefined, 1)).toHaveLength(1);
+    expect(parseStack(chrome, 1)).toHaveLength(1);
   });
 });
 

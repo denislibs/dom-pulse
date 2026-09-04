@@ -3,6 +3,7 @@ import { createObserver, buildEvents } from '../src/observer';
 import { Store } from '../src/store';
 import { WriteLog } from '../src/write-log';
 import { flush } from './helpers';
+import { resetWarnings } from '../src/warn';
 import type { MutationKind } from '../src/types';
 
 let store: Store; let log: WriteLog; let obs: ReturnType<typeof createObserver>; let root: HTMLElement; let ignored: HTMLElement;
@@ -77,6 +78,54 @@ describe('createObserver', () => {
     root.setAttribute('a', '2'); other.setAttribute('a', '2');
     await flush();
     expect(store.events().at(-1)?.target).toBe(other);
+  });
+  it('an invalid include selector warns once and does not silence the tool', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    resetWarnings();
+    try {
+      obs.setFilters({ include: '.foo:' });
+      root.setAttribute('a', '1');
+      await flush();
+      expect(store.events()).toHaveLength(1);
+      expect(String(warnSpy.mock.calls[0]?.[0])).toContain('include');
+      obs.setFilters({ include: '.bar:' });
+      root.setAttribute('a', '2');
+      await flush();
+      expect(store.events()).toHaveLength(2);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      warnSpy.mockRestore();
+      resetWarnings();
+    }
+  });
+  it('an invalid exclude selector warns once and keeps events flowing', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    resetWarnings();
+    try {
+      obs.setFilters({ exclude: '###' });
+      root.setAttribute('a', '1');
+      await flush();
+      expect(store.events()).toHaveLength(1);
+      expect(String(warnSpy.mock.calls[0]?.[0])).toContain('exclude');
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      warnSpy.mockRestore();
+      resetWarnings();
+    }
+  });
+  it('a valid include selector still filters', async () => {
+    const other = document.createElement('p'); document.body.appendChild(other);
+    await flush(); store.reset();
+    obs.setFilters({ include: '#root' });
+    root.setAttribute('a', '1'); other.setAttribute('a', '1');
+    await flush();
+    expect(store.events().map(e => e.target)).toEqual([root]);
+  });
+  it('keeps node counts exact for large subtrees even though the diff list is capped', async () => {
+    root.innerHTML = '<ul>' + '<li><b></b></li>'.repeat(30) + '</ul>';
+    await flush();
+    const [ev] = store.eventsFor(root);
+    expect(ev.nodesAffected).toBe(61); // ul + 30 li + 30 b
   });
   it('include matches descendants of the selector', async () => {
     const inner = document.createElement('b'); root.appendChild(inner);

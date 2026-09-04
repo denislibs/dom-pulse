@@ -6,9 +6,8 @@ import { watchLayoutShifts } from './cost/layout-shift';
 import { createObserver } from './observer';
 import { Overlay } from './overlay';
 import { Hud } from './hud/hud';
-import { parseStack } from './stack';
 import { withInternal } from './internal';
-import { warnOnce } from './warn';
+import { warnOnce, guarded } from './warn';
 import { DEFAULT_OPTIONS, type Options, type MutationKind } from './types';
 
 export type { Options, PulseEvent, ElementStats, SourceStats, Diff } from './types';
@@ -26,12 +25,6 @@ interface Instance {
 let inst: Instance | null = null;
 const ALL_KINDS: MutationKind[] = ['childList', 'attributes', 'characterData'];
 
-function detectSelfFile(): string | undefined {
-  const src = (document.currentScript as HTMLScriptElement | null)?.src;
-  if (src) return src;
-  return parseStack(new Error().stack)[0]?.file;
-}
-
 function unwind(cleanups: Array<() => void>): void {
   for (const c of cleanups.reverse()) { try { c(); } catch { /* never break the page while unwinding */ } }
 }
@@ -46,7 +39,6 @@ export const DomPulse = {
     const cleanups: Array<() => void> = [];
     try {
       const opts: Options = { ...DEFAULT_OPTIONS, ...options };
-      const selfFile = detectSelfFile();
       const store = new Store(opts.bufferSize, opts.hotThreshold);
       const log = new WriteLog();
       const overlay = new Overlay(store);
@@ -67,13 +59,13 @@ export const DomPulse = {
       cleanups.push(() => hud!.destroy());
       const restoreWrites = installWritePatches(log);
       cleanups.push(restoreWrites);
-      const restoreReflow = installReflowPatches(log, (ev, hit) => store.addReflow(ev, hit), selfFile);
+      const restoreReflow = installReflowPatches(log, (ev, hit) => store.addReflow(ev, hit));
       cleanups.push(restoreReflow);
-      observer = createObserver({ store, log, selfFile, isIgnored }, { include: opts.include, exclude: opts.exclude, kinds: new Set(ALL_KINDS) });
+      observer = createObserver({ store, log, isIgnored }, { include: opts.include, exclude: opts.exclude, kinds: new Set(ALL_KINDS) });
       cleanups.push(() => observer!.disconnect());
       const stopShift = watchLayoutShifts(store);
       cleanups.push(stopShift);
-      const timer = window.setInterval(() => store.tick(performance.now()), 1000);
+      const timer = window.setInterval(guarded('tick', () => store.tick(performance.now())), 1000);
       cleanups.push(() => clearInterval(timer));
       const clickHandler = (e: MouseEvent): void => {
         if (!e.altKey || !hud) return;

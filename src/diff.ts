@@ -1,5 +1,5 @@
 import type { AttributeDiff, TextDiff, ChildDiff, StyleChange } from './types';
-import { describeNode } from './describe';
+import { summarizeNode } from './describe';
 
 export function splitClasses(v: string | null): string[] {
   return (v ?? '').split(/\s+/).filter(Boolean);
@@ -45,15 +45,37 @@ export function textDiff(oldValue: string, newValue: string): TextDiff {
   return { kind: 'text', oldValue, newValue, changeStart: start, oldEnd, newEnd };
 }
 
-export function childDiff(added: Iterable<Node>, removed: Iterable<Node>): ChildDiff {
-  const a = [...added].map(n => describeNode(n));
-  const r = [...removed].map(n => describeNode(n));
+/**
+ * Per-side cap on the node signatures a ChildDiff retains. One innerHTML swap of a
+ * large list would otherwise describe every added and removed node and keep all of
+ * those strings alive in the event ring buffer; twenty is far more than a lane row
+ * can show, and the totals below stay exact regardless of the cap.
+ */
+export const MAX_LISTED_NODES = 20;
+
+function collect(nodes: Iterable<Node>, max: number): { list: string[]; more: number; total: number } {
+  const list: string[] = [];
+  let more = 0, total = 0;
+  for (const n of nodes) {
+    const s = summarizeNode(n);
+    total += s.nodes;
+    if (list.length < max) list.push(s.signature); else more++;
+  }
+  return { list, more, total };
+}
+
+export function childDiff(added: Iterable<Node>, removed: Iterable<Node>, max = MAX_LISTED_NODES): ChildDiff {
+  const a = collect(added, max);
+  const r = collect(removed, max);
   const pool = new Map<string, number>();
-  for (const s of r) pool.set(s, (pool.get(s) ?? 0) + 1);
+  for (const s of r.list) pool.set(s, (pool.get(s) ?? 0) + 1);
   const recreated: string[] = [];
-  for (const s of a) {
+  for (const s of a.list) {
     const c = pool.get(s) ?? 0;
     if (c > 0) { recreated.push(s); pool.set(s, c - 1); }
   }
-  return { kind: 'children', added: a, removed: r, recreated };
+  return {
+    kind: 'children', added: a.list, removed: r.list, recreated,
+    addedMore: a.more, removedMore: r.more, addedTotal: a.total, removedTotal: r.total,
+  };
 }

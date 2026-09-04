@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { describeNode, countNodes } from '../src/describe';
+import { describeNode, summarizeNode } from '../src/describe';
 
 describe('describeNode', () => {
   it('describes an element with id, up to 3 classes and descendant count', () => {
@@ -24,11 +24,15 @@ describe('describeNode', () => {
   });
 });
 
-describe('countNodes', () => {
-  it('counts nodes including descendants', () => {
+describe('summarizeNode', () => {
+  it('returns the signature and the subtree size from one scan', () => {
     const a = document.createElement('div');
     a.innerHTML = '<p><b></b></p>';
-    const t = document.createTextNode('x');
-    expect(countNodes([a, t])).toBe(4);
+    expect(summarizeNode(a)).toEqual({ signature: 'div (2)', nodes: 3 });
+    expect(summarizeNode(document.createTextNode('x'))).toEqual({ signature: '"x"', nodes: 1 });
+  });
+  it('describeNode is its signature', () => {
+    const el = document.createElement('span');
+    expect(describeNode(el)).toBe(summarizeNode(el).signature);
   });
 });

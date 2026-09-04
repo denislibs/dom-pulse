@@ -56,6 +56,20 @@ describe('childDiff', () => {
     expect(d.removed).toEqual(['li.row']);
     expect(d.recreated).toEqual(['li.row']);
   });
+  it('caps the retained signatures per side and keeps the totals exact', () => {
+    const added = Array.from({ length: 50 }, () => {
+      const li = document.createElement('li');
+      li.innerHTML = '<b></b>';
+      return li;
+    });
+    const d = childDiff(added, []);
+    expect(d.added).toHaveLength(20);
+    expect(d.addedMore).toBe(30);
+    expect(d.addedTotal).toBe(100); // 50 li + 50 b, counted for every node, not just the listed ones
+    expect(d.removed).toEqual([]);
+    expect(d.removedMore).toBe(0);
+    expect(d.removedTotal).toBe(0);
+  });
   it('recreation is a multiset match', () => {
     const mk = () => document.createElement('i');
     const d = childDiff([mk(), mk(), mk()], [mk()]);

@@ -23,7 +23,19 @@ export interface TextDiff {
   oldEnd: number;
   newEnd: number;
 }
-export interface ChildDiff { kind: 'children'; added: string[]; removed: string[]; recreated: string[] }
+export interface ChildDiff {
+  kind: 'children';
+  /** Signatures of the added / removed nodes, capped at MAX_LISTED_NODES per side. */
+  added: string[];
+  removed: string[];
+  recreated: string[];
+  /** How many added / removed nodes were left out of the lists above. */
+  addedMore: number;
+  removedMore: number;
+  /** Exact node counts (subtrees included) for every added / removed node, cap or no cap. */
+  addedTotal: number;
+  removedTotal: number;
+}
 export type Diff = AttributeDiff | TextDiff | ChildDiff;
 
 export interface Rect { x: number; y: number; width: number; height: number }

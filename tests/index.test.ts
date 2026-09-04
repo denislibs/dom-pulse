@@ -1,6 +1,8 @@
 import { describe, it, expect, afterEach, beforeAll, afterAll, vi } from 'vitest';
 import { DomPulse } from '../src/index';
 import { flush } from './helpers';
+import { Store } from '../src/store';
+import { resetWarnings } from '../src/warn';
 
 // jsdom has no real canvas backend: `canvas.getContext('2d')` is expected to
 // return null (the exact behavior Overlay is built to tolerate), but jsdom's
@@ -90,6 +92,24 @@ describe('DomPulse', () => {
     // black-box proof (index.ts does not expose the Store) that Alt+click never
     // registers the clicked element in the Store just to open its lane.
     expect(hud.querySelector('tbody')!.textContent).not.toContain('span#idle');
+  });
+  it('a throwing store tick does not escape the interval', () => {
+    vi.useFakeTimers();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    resetWarnings();
+    const origTick = Store.prototype.tick;
+    Store.prototype.tick = function tick() { throw new Error('boom'); };
+    try {
+      DomPulse.start();
+      expect(() => vi.advanceTimersByTime(1100)).not.toThrow();
+      expect(warnSpy.mock.calls.map(c => String(c[0])).join(' ')).toContain('tick');
+    } finally {
+      Store.prototype.tick = origTick;
+      DomPulse.stop();
+      warnSpy.mockRestore();
+      resetWarnings();
+      vi.useRealTimers();
+    }
   });
   it('unwinds patches and DOM nodes if start fails partway through construction', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});

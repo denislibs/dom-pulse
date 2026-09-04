@@ -7,7 +7,7 @@ import { makeEvent } from './helpers';
 let log: WriteLog; let restore: () => void; let t = 0; const onHit = vi.fn();
 const origOffset = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth')!;
 
-beforeEach(() => { t = 0; onHit.mockReset(); log = new WriteLog(() => t, () => {}); restore = installReflowPatches(log, onHit, undefined, () => t); });
+beforeEach(() => { t = 0; onHit.mockReset(); log = new WriteLog(() => t, () => {}); restore = installReflowPatches(log, onHit, () => t); });
 afterEach(() => restore());
 
 describe('installReflowPatches', () => {
@@ -27,6 +27,54 @@ describe('installReflowPatches', () => {
     window.getComputedStyle(el);
     expect(rec.reflows.map(h => h.api)).toEqual(['offsetWidth', 'getBoundingClientRect', 'getComputedStyle']);
     expect(onHit).not.toHaveBeenCalled();
+  });
+  it('attributes the hit to the element that was read, not to the newest write', () => {
+    const a = document.createElement('div');
+    const b = document.createElement('div');
+    document.body.append(a, b);
+    // b is written first, a second: log.last() is a's record, but the read is on b.
+    const recB = log.record(b, 'B');
+    const recA = log.record(a, 'A');
+    t = 3;
+    void b.offsetWidth;
+    expect(recB.reflows.map(h => h.api)).toEqual(['offsetWidth']);
+    expect(recA.reflows).toEqual([]);
+    a.remove(); b.remove();
+  });
+  it('accepts a record for an ancestor or a descendant of the read element', () => {
+    const parent = document.createElement('ul');
+    const child = document.createElement('li');
+    parent.appendChild(child);
+    const other = document.createElement('div');
+    document.body.append(parent, other);
+    const recParent = log.record(parent, 'P');
+    log.record(other, 'O');
+    void child.offsetWidth;                      // ancestor write
+    expect(recParent.reflows).toHaveLength(1);
+    const recChild = log.record(child, 'C');
+    log.record(other, 'O2');
+    parent.getBoundingClientRect();              // descendant write
+    expect(recChild.reflows.map(h => h.api)).toEqual(['getBoundingClientRect']);
+    parent.remove(); other.remove();
+  });
+  it('picks the element argument of getComputedStyle, not the newest write', () => {
+    const a = document.createElement('div');
+    const b = document.createElement('div');
+    document.body.append(a, b);
+    const recB = log.record(b, 'B');
+    log.record(a, 'A');
+    window.getComputedStyle(b);
+    expect(recB.reflows.map(h => h.api)).toEqual(['getComputedStyle']);
+    a.remove(); b.remove();
+  });
+  it('falls back to the newest write when no record relates to the read element', () => {
+    const a = document.createElement('div');
+    const lonely = document.createElement('div');
+    document.body.append(a, lonely);
+    const recA = log.record(a, 'A');
+    void lonely.offsetWidth;
+    expect(recA.reflows).toHaveLength(1);
+    a.remove(); lonely.remove();
   });
   it('notifies when the record already has an event', () => {
     const el = document.createElement('div');

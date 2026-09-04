@@ -1,10 +1,12 @@
 import { Store } from '../store';
 import { withInternal } from '../internal';
 import { describeNode } from '../describe';
+import { shortFile } from '../stack';
+import { guarded } from '../warn';
 import { STYLES } from './styles';
 import { renderDiff, escapeHtml } from './render-diff';
 import { drawSparkline } from './sparkline';
-import type { ElementStats, MutationKind, SortKey } from '../types';
+import type { ElementStats, MutationKind, PulseEvent, SortKey, StackFrame } from '../types';
 
 export interface HudFilters { include: string; exclude: string; kinds: MutationKind[]; minRate: number; topN: number }
 export interface HudCallbacks {
@@ -23,6 +25,13 @@ const COLUMNS: Array<{ key: SortKey; title: string }> = [
   { key: 'nodesAffected', title: 'nodes' }, { key: 'total', title: 'total' },
 ];
 
+/** Stack frames as escaped rows; page-derived text reaches the lane as HTML. */
+function frames(stack: StackFrame[]): string {
+  if (!stack.length) return '<div class="frame"><i>no stack captured</i></div>';
+  return stack.map(f =>
+    `<div class="frame">${escapeHtml(f.fn || '(anonymous)')} <span class="loc">${escapeHtml(shortFile(f.file))}:${f.line}:${f.column}</span></div>`).join('');
+}
+
 export class Hud {
   readonly host: HTMLElement;
   readonly root: ShadowRoot;
@@ -32,6 +41,7 @@ export class Hud {
   private state = {
     collapsed: false, paused: false, settingsOpen: false,
     sortKey: 'rate' as SortKey, selected: null as Element | null, expanded: false, sourceFilter: null as string | null,
+    openEvents: new Set<number>(),
     include: '', exclude: '', kinds: { childList: true, attributes: true, characterData: true } as Record<MutationKind, boolean>,
     minRate: 0, topN: 10,
   };
@@ -65,7 +75,9 @@ export class Hud {
     this.restorePosition();
     this.bind();
     this.render();
-    this.timer = window.setInterval(() => this.render(), 250);
+    // The one long-lived timer of the HUD: a throw inside render() would otherwise
+    // surface as an uncaught error four times a second for as long as the page lives.
+    this.timer = window.setInterval(guarded('hud-render', () => this.render()), 250);
   }
 
   private skeleton(): string {
@@ -139,11 +151,8 @@ export class Hud {
           // labels in the first place, without registering the element in the Store).
           const label = escapeHtml(tracked ? tracked.label : describeNode(s.selected));
           const evs = this.store.eventsFor(s.selected).slice(-20).reverse();
-          this.el.lane.innerHTML = `<div class="lane-title">${label}</div>` + (evs.map(ev => {
-            const meta = [ev.reflows.length ? `⟲${ev.reflows.length}` : '', ev.layoutShift ? `↕${ev.layoutShift.toFixed(3)}` : '', ev.source ? escapeHtml(ev.source) : '<i>unknown source</i>']
-              .filter(Boolean).join(' ');
-            return `<div class="ev"><span class="k ${ev.kind}">${KIND_LABEL[ev.kind]}</span> ${renderDiff(ev.diff)} <span class="meta">${meta}</span></div>`;
-          }).join('') || '<div class="empty">no recorded mutations for this element</div>');
+          this.el.lane.innerHTML = `<div class="lane-title">${label}</div>` +
+            (evs.map(ev => this.renderEvent(ev)).join('') || '<div class="empty">no recorded mutations for this element</div>');
         }
       }
       this.el.lane.hidden = !showLane;
@@ -153,6 +162,26 @@ export class Hud {
       this.el.sources.innerHTML = sources.map((x, i) =>
         `<div class="src${x.key === s.sourceFilter ? ' active' : ''}" data-s="${i}"><span>${escapeHtml(x.key)}</span><span>${x.mutations} mut · ${x.reflows} reflow</span></div>`).join('');
     });
+  }
+
+  /** One lane row: compact by default, click to expand the captured stacks. */
+  private renderEvent(ev: PulseEvent): string {
+    const open = this.state.openEvents.has(ev.id);
+    const meta = [ev.reflows.length ? `⟲${ev.reflows.length}` : '', ev.layoutShift ? `↕${ev.layoutShift.toFixed(3)}` : '', ev.source ? escapeHtml(ev.source) : '<i>unknown source</i>']
+      .filter(Boolean).join(' ');
+    const row = `<div class="ev" data-ev="${ev.id}"><span class="tog">${open ? '▾' : '▸'}</span><span class="k ${ev.kind}">${KIND_LABEL[ev.kind]}</span> ${renderDiff(ev.diff)} <span class="meta">${meta}</span></div>`;
+    return open ? row + `<div class="ev-detail">${this.renderDetail(ev)}</div>` : row;
+  }
+
+  /** Everything the event carries but the compact row has no space for: who wrote,
+   * and for each forced reflow which API was read, how long after the write, by whom. */
+  private renderDetail(ev: PulseEvent): string {
+    const parts = [`<div class="det-h">wrote from</div>${frames(ev.stack)}`];
+    for (const h of ev.reflows) {
+      parts.push(`<div class="det-h">forced reflow · read <b>${escapeHtml(h.api)}</b> ${h.delay.toFixed(1)} ms after this write · ` +
+        `${h.source ? escapeHtml(h.source) : '<i>unknown source</i>'}</div>${frames(h.stack)}`);
+    }
+    return parts.join('');
   }
 
   select(el: Element): void {
@@ -171,7 +200,7 @@ export class Hud {
       const t = e.target as HTMLElement;
       const act = t.closest('[data-act]')?.getAttribute('data-act');
       if (act === 'pause') { this.setPaused(!this.state.paused); this.cb.onPause(this.state.paused); return; }
-      if (act === 'reset') { this.cb.onReset(); this.state.selected = null; this.state.sourceFilter = null; this.render(); return; }
+      if (act === 'reset') { this.cb.onReset(); this.state.selected = null; this.state.sourceFilter = null; this.state.openEvents.clear(); this.render(); return; }
       if (act === 'settings') { this.state.settingsOpen = !this.state.settingsOpen; this.render(); return; }
       if (act === 'collapse') { this.state.collapsed = true; this.render(); return; }
       if (t.closest('.badge')) { this.state.collapsed = false; this.render(); return; }
@@ -183,6 +212,12 @@ export class Hud {
         if (!st) return;
         if (this.state.selected === st.element) this.state.expanded = !this.state.expanded;
         else { this.state.selected = st.element; this.state.expanded = false; this.cb.onLocate(st.element); }
+        this.render(); return;
+      }
+      const evRow = t.closest('.ev[data-ev]');
+      if (evRow) {
+        const id = Number(evRow.getAttribute('data-ev'));
+        if (!this.state.openEvents.delete(id)) this.state.openEvents.add(id);
         this.render(); return;
       }
       const src = t.closest('.src[data-s]');

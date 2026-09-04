@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach, beforeAll, afterAll } from 'vitest
 import { Hud } from '../src/hud/hud';
 import { Store } from '../src/store';
 import { makeEvent } from './helpers';
+import { resetWarnings } from '../src/warn';
 
 // jsdom has no real canvas backend: `canvas.getContext('2d')` is expected to
 // return null (the exact behavior this module is built to tolerate), but
@@ -90,6 +91,68 @@ describe('Hud', () => {
     expect(q('tbody tr[data-i="0"] td.el').textContent).toBe('b');
     q('.sources .src[data-s="0"]').click();
     expect(hud!.root.querySelectorAll('tbody tr[data-i]').length).toBe(1);
+  });
+  it('expands an event row to show the write stack and the reflow detail', () => {
+    const { store, el, q } = setup();
+    store.push(makeEvent(el, {
+      time: performance.now(),
+      source: 'app.js:5 render',
+      stack: [
+        { fn: 'render', file: 'http://x/app/list.js?v=2', line: 5, column: 3 },
+        { fn: '', file: 'http://x/app/main.js', line: 9, column: 1 },
+      ],
+      reflows: [{
+        api: 'offsetWidth', delay: 2.5, source: 'thrash.js:12 measure',
+        stack: [{ fn: 'measure', file: 'http://x/app/thrash.js', line: 12, column: 7 }],
+      }],
+    }));
+    hud!.select(el);
+    const row = q('.lane .ev');
+    expect(row).not.toBeNull();
+    // Collapsed: no stack, no reflow detail.
+    expect(q('.lane').textContent).not.toContain('measure');
+    row.click();
+    const lane = q('.lane');
+    expect(lane.querySelector('.ev-detail')).not.toBeNull();
+    expect(lane.textContent).toContain('render');
+    expect(lane.textContent).toContain('list.js:5:3');
+    expect(lane.textContent).toContain('offsetWidth');
+    expect(lane.textContent).toContain('2.5');
+    expect(lane.textContent).toContain('thrash.js:12 measure');
+    expect(lane.textContent).toContain('thrash.js:12:7');
+    // Clicking again collapses it.
+    q('.lane .ev').click();
+    expect(q('.lane').querySelector('.ev-detail')).toBeNull();
+  });
+  it('escapes page-derived text in the expanded event detail', () => {
+    const { store, el, q } = setup();
+    store.push(makeEvent(el, {
+      time: performance.now(),
+      stack: [{ fn: '<img src=x onerror=alert(1)>', file: 'http://x/"onload="a', line: 1, column: 1 }],
+      reflows: [{ api: 'offsetWidth', delay: 1, source: '<b>boom</b>', stack: [] }],
+    }));
+    hud!.select(el);
+    q('.lane .ev').click();
+    const html = q('.lane').innerHTML;
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+    expect(html).toContain('&lt;b&gt;boom&lt;/b&gt;');
+    expect(q('.lane').querySelector('img')).toBeNull();
+  });
+  it('a throwing render does not escape the interval', () => {
+    vi.useFakeTimers();
+    try {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      resetWarnings();
+      const { store } = setup();
+      (store as unknown as { rates: () => unknown }).rates = () => { throw new Error('boom'); };
+      expect(() => vi.advanceTimersByTime(1000)).not.toThrow();
+      expect(String(warnSpy.mock.calls[0]?.[0])).toContain('hud-render');
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      warnSpy.mockRestore();
+      resetWarnings();
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it('destroy removes the host', () => {
     setup();
