@@ -80,51 +80,80 @@ describe('Overlay', () => {
   it('recovers from exceptions in draw and allows wake to reschedule', () => {
     resetWarnings();
     const store = new Store(10, 20);
-    let rafCallCount = 0;
-    const throwingRectOf = (el: Element) => {
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    // Push the event "now" so that when the real draw() runs a moment later
+    // (synchronously, via the requestAnimationFrame stub below) the element
+    // is still inside FADE_MS and frameStyle() returns a real style instead
+    // of null — otherwise draw() would skip the element entirely and never
+    // reach rectOf.
+    const now = performance.now();
+    store.push(makeEvent(el, { time: now, kind: 'attributes' }));
+
+    let rectOfCallCount = 0;
+    const throwingRectOf = (_el: Element) => {
+      rectOfCallCount++;
       throw new Error('rectOf error');
     };
 
-    const o = new Overlay(store, throwingRectOf);
-    const warnSpy = vi.spyOn(console, 'warn');
-    const drawSpy = vi.spyOn(o, 'draw').mockImplementation(() => {
-      throw new Error('draw error for testing');
-    });
+    // draw() only calls rectOf when its canvas context is truthy — it's
+    // gated behind `if (!ctx) continue;`. The suite-wide getContext stub
+    // above returns null (to silence jsdom's "Not implemented" warning), so
+    // this test needs its own fake 2D context — just the methods draw() and
+    // resize() touch — so the real draw() body runs all the way through to
+    // the throwing rectOf call instead of short-circuiting first.
+    const priorGetContext = HTMLCanvasElement.prototype.getContext;
+    const fakeCtx = {
+      clearRect: () => {}, setTransform: () => {}, setLineDash: () => {},
+      fillRect: () => {}, strokeRect: () => {},
+      fillStyle: '', lineWidth: 0, strokeStyle: '',
+    };
+    HTMLCanvasElement.prototype.getContext = (() => fakeCtx) as unknown as typeof priorGetContext;
 
-    // Stub requestAnimationFrame to invoke its callback synchronously and track calls
     const originalRAF = globalThis.requestAnimationFrame;
-    const now = performance.now();
-    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
-      rafCallCount++;
-      // Invoke synchronously
-      cb(now);
-      return 0;
-    }) as typeof requestAnimationFrame;
+    const warnSpy = vi.spyOn(console, 'warn');
+    let rafCallCount = 0;
+    let o: Overlay | undefined;
 
-    // First wake() schedules frame, which calls draw and throws
-    // The exception should be caught by the frame method and running reset to false
-    expect(() => o.wake()).not.toThrow();
+    try {
+      o = new Overlay(store, throwingRectOf);
 
-    // Verify draw was called
-    expect(drawSpy).toHaveBeenCalled();
+      // Stub requestAnimationFrame to invoke its callback synchronously and track calls.
+      globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+        rafCallCount++;
+        cb(performance.now());
+        return 0;
+      }) as typeof requestAnimationFrame;
 
-    // Verify the error was reported once
-    expect(warnSpy).toHaveBeenCalledWith('[dom-pulse] overlay-draw:', expect.any(Error));
-    expect(warnSpy.mock.calls.length).toBe(1);
+      // First wake() schedules a frame; the real draw() iterates the active
+      // element, reaches frameStyle, and calls the throwing rectOf. The
+      // exception must be caught inside frame() rather than escaping wake().
+      expect(() => o!.wake()).not.toThrow();
 
-    const rafCallsAfterFirstWake = rafCallCount;
+      // The throw must actually have come from inside draw()'s own rectOf call.
+      expect(rectOfCallCount).toBeGreaterThan(0);
 
-    // Second wake() should schedule another frame since running was reset to false
-    // If the fix failed, wake() would return early (running still true) and rafCallCount wouldn't increase
-    expect(() => o.wake()).not.toThrow();
+      // The error was reported through warnOnce.
+      expect(warnSpy).toHaveBeenCalledWith('[dom-pulse] overlay-draw:', expect.any(Error));
+      // warnOnce only warns once per key for the module's lifetime, so don't
+      // pin an exact count — just that it fired at least once.
+      expect(warnSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
 
-    // Verify requestAnimationFrame was called again (proving wake didn't return early)
-    expect(rafCallCount).toBeGreaterThan(rafCallsAfterFirstWake);
+      const rafCallsAfterFirstWake = rafCallCount;
+      const rectOfCallsAfterFirstWake = rectOfCallCount;
 
-    // Restore
-    globalThis.requestAnimationFrame = originalRAF;
-    warnSpy.mockRestore();
-    drawSpy.mockRestore();
-    o.destroy();
+      // Second wake() should schedule another frame since `running` was reset
+      // to false on the error path. If the fix regressed, wake() would return
+      // early (running still true) and neither counter would advance.
+      expect(() => o!.wake()).not.toThrow();
+
+      expect(rafCallCount).toBeGreaterThan(rafCallsAfterFirstWake);
+      expect(rectOfCallCount).toBeGreaterThan(rectOfCallsAfterFirstWake);
+    } finally {
+      globalThis.requestAnimationFrame = originalRAF;
+      HTMLCanvasElement.prototype.getContext = priorGetContext;
+      warnSpy.mockRestore();
+      o?.destroy();
+    }
   });
 });
