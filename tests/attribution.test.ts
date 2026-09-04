@@ -54,6 +54,39 @@ describe('installWritePatches', () => {
     withInternal(() => el.setAttribute('a', '1'));
     expect(log.size).toBe(0);
   });
+  it('records outerHTML writes against the former parent and applies the replacement', () => {
+    const p = document.createElement('div'), c = document.createElement('span');
+    p.appendChild(c); log.clear();
+    c.outerHTML = '<em class="repl"></em>';
+    expect(log.last()?.target).toBe(p);
+    expect(p.firstElementChild?.tagName).toBe('EM');
+    expect(p.firstElementChild?.className).toBe('repl');
+  });
+  it('attributes insertAdjacentHTML by position: parent for beforebegin/afterend, self for afterbegin/beforeend', () => {
+    const p = document.createElement('div'), el = document.createElement('span');
+    p.appendChild(el);
+
+    el.insertAdjacentHTML('beforebegin', '<i class="bb"></i>');
+    expect(log.last()?.target).toBe(p);
+    expect(p.firstElementChild?.className).toBe('bb');
+
+    el.insertAdjacentHTML('afterend', '<i class="ae"></i>');
+    expect(log.last()?.target).toBe(p);
+    expect(p.lastElementChild?.className).toBe('ae');
+
+    el.insertAdjacentHTML('afterbegin', '<i class="ab"></i>');
+    expect(log.last()?.target).toBe(el);
+    expect(el.firstElementChild?.className).toBe('ab');
+
+    el.insertAdjacentHTML('beforeend', '<i class="be"></i>');
+    expect(log.last()?.target).toBe(el);
+    expect(el.lastElementChild?.className).toBe('be');
+
+    // Position matching is ASCII-case-insensitive per the DOM spec.
+    el.insertAdjacentHTML('AfterEnd', '<i class="ae2"></i>');
+    expect(log.last()?.target).toBe(p);
+    expect(el.nextElementSibling?.className).toBe('ae2');
+  });
   it('restore puts originals back', () => {
     restore();
     expect(Node.prototype.appendChild).toBe(origAppend);

@@ -7,7 +7,10 @@ type Pick = (self: any, args: any[]) => Node | null | undefined;
 
 /**
  * Wraps every DOM write entry point so that each write leaves a WriteRecord with a stack.
- * Originals are always called first; DOM Pulse logic never throws into the page.
+ * The target picker always runs first, read-only, before the write happens (some writes,
+ * like assigning outerHTML, detach the node and make the target unrecoverable afterwards).
+ * The original is then called and its result returned unchanged, and DOM Pulse's own
+ * logic runs afterwards inside try/catch; DOM Pulse never throws into the page.
  */
 export function installWritePatches(log: WriteLog): Restore {
   const restores: Restore[] = [];
@@ -43,8 +46,10 @@ export function installWritePatches(log: WriteLog): Restore {
     const key = INTERNAL_PREFIX + name;
     const set = {
       [key](this: any, value: any) {
+        let target: Node | null | undefined;
+        try { target = pick(this); } catch { target = null; }
         originalSet.call(this, value);
-        try { capture(pick(this)); } catch { /* never break the page */ }
+        try { capture(target); } catch { /* never break the page */ }
       },
     }[key];
     Object.defineProperty(proto, name, { ...desc, set });
@@ -71,11 +76,18 @@ export function installWritePatches(log: WriteLog): Restore {
   const self = (s: any) => s as Node;
   const parent = (s: any) => (s as Node).parentNode;
   const ofOwner = (s: any) => owner.get(s) ?? null;
+  // beforebegin/afterend insert into the parent's child list per spec; the other two
+  // positions insert into the element's own child list. Keyword matching is ASCII-case-insensitive.
+  const adjacent = (s: any, args: any[]) => {
+    const pos = String(args[0]).toLowerCase();
+    return pos === 'beforebegin' || pos === 'afterend' ? (s as Node).parentNode : (s as Node);
+  };
 
   const N = Node.prototype;
   const E = Element.prototype;
   for (const m of ['appendChild', 'insertBefore', 'removeChild', 'replaceChild']) patchMethod(N, m, self);
-  for (const m of ['append', 'prepend', 'replaceChildren', 'insertAdjacentHTML', 'insertAdjacentElement', 'insertAdjacentText']) patchMethod(E, m, self);
+  for (const m of ['append', 'prepend', 'replaceChildren']) patchMethod(E, m, self);
+  for (const m of ['insertAdjacentHTML', 'insertAdjacentElement', 'insertAdjacentText']) patchMethod(E, m, adjacent);
   patchMethod(E, 'remove', parent);
   for (const m of ['setAttribute', 'setAttributeNS', 'removeAttribute', 'removeAttributeNS', 'toggleAttribute']) patchMethod(E, m, self);
   patchSetter(E, 'innerHTML', self);
