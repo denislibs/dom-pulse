@@ -1,0 +1,25 @@
+{
+  "name": "dom-pulse",
+  "version": "0.1.0",
+  "description": "Live DOM mutation stethoscope: heatmap overlay, cost signals, DOM diffs and stack attribution",
+  "type": "module",
+  "main": "./dist/dom-pulse.esm.js",
+  "module": "./dist/dom-pulse.esm.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "jsdom": "^29.1.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
+  }
+}
