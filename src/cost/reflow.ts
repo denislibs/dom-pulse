@@ -33,14 +33,38 @@ const METHODS: Array<[object | undefined, string, number?]> = [
   [HTML_PROTO, 'focus'],
 ];
 
+/** Where a forced-layout hit goes once its home is known. */
+export interface ReflowSink {
+  /** The read belongs to a write record that already produced a mutation event. */
+  onEvent(ev: PulseEvent, hit: ReflowHit): void;
+  /**
+   * The read belongs to an element that nothing wrote this frame, so there is no event
+   * to carry it. `time` is when the read happened.
+   */
+  onElement(el: Element, hit: ReflowHit, time: number): void;
+}
+
+/** The element a read of `node` is charged to; character data is charged to its parent. */
+function elementRead(node: Node | null): Element | null {
+  if (!node) return null;
+  if (typeof Element !== 'undefined' && node instanceof Element) return node;
+  return node.parentElement;
+}
+
 /**
  * Patches the DOM's layout-reading APIs (offsetWidth & friends, getBoundingClientRect,
  * getComputedStyle, ...) so that a read occurring while `log` still holds this frame's
- * write records is recognized as a forced synchronous reflow. The hit is attached to
- * the newest write record for the element being read (or an ancestor or descendant of
- * it), falling back to the newest write of the frame when nothing is related; if that
- * record already carries a PulseEvent, `onHit` fires immediately so callers (e.g. the
- * overlay) can react without waiting for the next paint.
+ * write records is recognized as a forced synchronous reflow.
+ *
+ * A hit belongs to the element whose layout was read. Where a write record for that element
+ * (or for an ancestor or a descendant of it) exists, the event that record produces is its
+ * home -- same element, and the event carries the read into the HUD's mutation lane; if the
+ * record already has its PulseEvent, `sink.onEvent` fires immediately so callers (e.g. the
+ * overlay) can react without waiting for the next paint. Where nothing written this frame
+ * relates to the element, the hit goes straight to that element through `sink.onElement`:
+ * in a thrash loop the read comes *before* any write to the element, so charging the newest
+ * write instead would blame an element nobody read. A read with no pending write at all is
+ * not a forced reflow -- layout is clean, there is nothing to flush -- and is ignored.
  *
  * As with the write patches, the original is always called first and its result returned
  * unchanged; DOM Pulse's own bookkeeping runs afterwards inside try/catch so a bug here can
@@ -50,23 +74,30 @@ const METHODS: Array<[object | undefined, string, number?]> = [
  */
 export function installReflowPatches(
   log: WriteLog,
-  onHit: (ev: PulseEvent, hit: ReflowHit) => void,
+  sink: ReflowSink,
   now: () => number = () => performance.now(),
 ): Restore {
   const restores: Restore[] = [];
 
   function read(api: string, subject: unknown): void {
     if (isInternal()) return;
-    // Blame the element that was actually read: the newest write to it, an ancestor or
-    // a descendant of it. Only when the read touches nothing written this frame does the
-    // newest write of the frame remain the best guess.
+    // Nothing pending this frame means nothing to flush: the read did not force layout.
+    const pending = log.last();
+    if (!pending) return;
     const node = typeof Node !== 'undefined' && subject instanceof Node ? subject : null;
-    const rec = (node ? log.forRead(node) : null) ?? log.last();
-    if (!rec) return;
+    const rec = node ? log.forRead(node) : null;
+    const time = now();
     const stack = parseStack(new Error().stack);
-    const hit: ReflowHit = { api, delay: now() - rec.time, stack, source: sourceKey(stack) };
-    rec.reflows.push(hit);
-    if (rec.event) onHit(rec.event, hit);
+    // Time since the write this read had to flush: the related one where there is one,
+    // otherwise the newest pending write of the frame.
+    const hit: ReflowHit = { api, delay: time - (rec ?? pending).time, stack, source: sourceKey(stack) };
+    if (rec) {
+      rec.reflows.push(hit);
+      if (rec.event) sink.onEvent(rec.event, hit);
+      return;
+    }
+    const el = elementRead(node);
+    if (el) sink.onElement(el, hit, time);
   }
 
   function patchGetter(proto: object | undefined, name: string): void {

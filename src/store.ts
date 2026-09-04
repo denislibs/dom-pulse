@@ -40,13 +40,28 @@ export class Store {
       s.sources.set(ev.source, (s.sources.get(ev.source) ?? 0) + 1);
       this.source(ev.source).mutations++;
     }
-    for (const hit of ev.reflows) this.applyReflow(ev, s, hit);
+    for (const hit of ev.reflows) this.countReflow(s, ev.time + hit.delay, ev.source);
     this.emit();
   }
 
   addReflow(ev: PulseEvent, hit: ReflowHit): void {
     ev.reflows.push(hit);
-    this.applyReflow(ev, this.stats(ev.target), hit);
+    this.countReflow(this.stats(ev.target), ev.time + hit.delay, ev.source);
+    this.emit();
+  }
+
+  /**
+   * A forced layout read charged straight to the element whose layout was read, for the
+   * read-before-write case: in a thrash loop the read happens before anything writes that
+   * element, so there is no write record and no event to carry the hit. It feeds exactly
+   * the aggregates a mutation-carried hit feeds -- the element's reflow count and last
+   * reflow time, the reflow rate, the source's reflow count -- so an element can carry
+   * reflows with zero mutations. The blame goes to the reading code (`hit.source`), which
+   * is the only call site involved; an event-carried hit has a mutation source to use.
+   */
+  addElementReflow(el: Element, hit: ReflowHit, time: number): void {
+    if (this.paused) return;
+    this.countReflow(this.stats(el), time, hit.source);
     this.emit();
   }
 
@@ -61,11 +76,12 @@ export class Store {
     this.emit();
   }
 
-  private applyReflow(ev: PulseEvent, s: ElementStats, hit: ReflowHit): void {
+  /** The one place a forced reflow updates the aggregates, whatever carried it here. */
+  private countReflow(s: ElementStats, time: number, source: string | null): void {
     s.reflows++;
-    s.lastReflowTime = ev.time + hit.delay;
-    this.reflowRate.add(s.lastReflowTime);
-    if (ev.source) this.source(ev.source).reflows++;
+    s.lastReflowTime = time;
+    this.reflowRate.add(time);
+    if (source) this.source(source).reflows++;
   }
 
   stats(el: Element): ElementStats {
@@ -114,7 +130,11 @@ export class Store {
     this.sinceTick = 0;
     const keep: ElementStats[] = [];
     for (const s of this.elementList) {
-      if (s.element.isConnected && now - s.lastTime < PRUNE_AFTER_MS) keep.push(s);
+      // Reads keep an element alive as much as writes do: an element that is only ever
+      // measured (never mutated) has lastTime 0 and would otherwise be pruned on the first
+      // tick after the page passes PRUNE_AFTER_MS, taking its reflow count with it.
+      const last = Math.max(s.lastTime, s.lastReflowTime);
+      if (s.element.isConnected && now - last < PRUNE_AFTER_MS) keep.push(s);
       else this.byElement.delete(s.element);
     }
     this.elementList = keep;

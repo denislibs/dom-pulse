@@ -20,7 +20,10 @@ beforeEach(() => {
   store = new Store(100, 20);
   log = new WriteLog(() => 0, () => {});
   restore = installWritePatches(log);
-  restoreReflow = installReflowPatches(log, (ev, hit) => store.addReflow(ev, hit), () => 0);
+  restoreReflow = installReflowPatches(log, {
+    onEvent: (ev, hit) => store.addReflow(ev, hit),
+    onElement: (el, hit, time) => store.addElementReflow(el, hit, time),
+  }, () => 0);
   obs = createObserver({ store, log, isIgnored: () => false, now: () => 0 }, { include: '', exclude: '', kinds: allKinds() });
 });
 afterEach(() => { obs.disconnect(); restoreReflow(); restore(); });
@@ -35,6 +38,12 @@ function moveNode(to: Element, child: Element): void { to.appendChild(child); }
 function first(el: Element): void { el.setAttribute('a', '1'); }
 function second(el: Element): void { el.setAttribute('b', '2'); }
 function measure(el: HTMLElement): void { void el.offsetWidth; }
+// The demo's "Layout thrash" loop, in its real order: READ the element's layout first,
+// then write it. Every read happens before that element has any write record of its own.
+function thrashRows(els: HTMLElement[]): void {
+  for (const el of els) el.style.setProperty('width', String(el.offsetWidth + 1) + 'px');
+}
+function fillList(el: Element): void { el.innerHTML = '<li class="item">item</li>'; }
 // replaceChildren() on a childless node mutates nothing, so it queues no MutationRecord --
 // but it is not provably inert at call time (the node could have had children), so it does
 // leave a write record behind. Exactly the shape the orphan mechanism exists for.
@@ -209,5 +218,57 @@ describe('write attribution', () => {
     expect(reflowsOf(evs[0].source)).toBe(0);
     expect(reflowsOf(evs[1].source)).toBe(1);
     expect(store.rates(0)).toEqual({ mutations: 2, reflows: 1 });
+  });
+  it('charges a read-before-write thrash loop to the elements that were read', async () => {
+    // The demo's shape end to end: an unrelated write (fillList on the list) sits in the log,
+    // then a loop reads each row's layout and only afterwards writes it. At read time no record
+    // for that row exists, so the row must be charged directly -- charging the newest write
+    // instead blamed the list, an element nobody read, and the function that filled it.
+    const list = document.createElement('ul'); list.id = 'list';
+    const rowBox = document.createElement('div'); rowBox.id = 'rows';
+    root.append(list, rowBox);
+    const rows = [0, 1, 2].map(() => { const r = document.createElement('div'); r.className = 'row'; rowBox.appendChild(r); return r; });
+    await flush();
+    store.reset(); log.clear();
+
+    fillList(list);
+    thrashRows(rows);
+    await flush();
+
+    const thrashSource = store.topSources(20).map(s => s.key).find(k => k?.includes('thrashRows')) ?? null;
+    const fillSource = store.eventsFor(list)[0].source;
+    expect(fillSource).toContain('fillList');
+    // Each read element carries its own forced reflow...
+    for (const r of rows) expect(store.stats(r).reflows).toBe(1);
+    // ...the element that was merely written carries none, on the element and on its event.
+    expect(store.stats(list).reflows).toBe(0);
+    expect(store.eventsFor(list)[0].reflows).toEqual([]);
+    // ...and the Sources panel blames the reading function, not the earlier writer.
+    expect(thrashSource).toContain('thrashRows');
+    expect(reflowsOf(thrashSource)).toBe(3);
+    expect(reflowsOf(fillSource)).toBe(0);
+    expect(store.rates(0).reflows).toBe(3);
+  });
+  it('charges a read of a never-written element to that element', async () => {
+    // The single case behind the loop: one unrelated write, one read of an element that has
+    // no record of its own and is neither ancestor nor descendant of the written one.
+    const lonely = document.createElement('div'); lonely.id = 'lonely';
+    document.body.appendChild(lonely);
+    await flush();
+    store.reset(); log.clear();
+
+    libB_setAttribute(root);
+    measure(lonely);
+    await flush();
+
+    const [ev] = store.eventsFor(root);
+    expect(ev.source).toContain('libB_setAttribute');
+    expect(ev.reflows).toEqual([]);
+    expect(store.stats(root).reflows).toBe(0);
+    expect(store.stats(lonely).reflows).toBe(1);
+    expect(store.stats(lonely).total).toBe(0);
+    expect(reflowsOf(ev.source)).toBe(0);
+    expect(reflowsOf(store.topSources(20).map(s => s.key).find(k => k?.includes('measure')) ?? null)).toBe(1);
+    expect(store.rates(0).reflows).toBe(1);
   });
 });

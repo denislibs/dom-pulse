@@ -58,6 +58,36 @@ describe('Store', () => {
     expect(s.topSources(1)[0].reflows).toBe(1);
     expect(s.rates(500).reflows).toBe(1);
   });
+  it('charges a reflow to an element that has no mutation event', () => {
+    // Read-before-write: the element was measured before anything wrote it, so no event
+    // exists to carry the hit. Every aggregate a carried hit feeds must move all the same.
+    const s = new Store(10, 20);
+    const a = el();
+    s.addElementReflow(a, { api: 'offsetWidth', delay: 0, stack: [], source: 'app.js:9 thrash' }, 40);
+    const st = s.stats(a);
+    expect(st.reflows).toBe(1);
+    expect(st.total).toBe(0);
+    expect(st.lastReflowTime).toBe(40);
+    expect(s.rates(40).reflows).toBe(1);
+    expect(s.topSources(5)).toEqual([{ key: 'app.js:9 thrash', mutations: 0, reflows: 1 }]);
+  });
+  it('ignores an element reflow while paused', () => {
+    const s = new Store(10, 20);
+    const a = el();
+    s.paused = true;
+    s.addElementReflow(a, { api: 'offsetWidth', delay: 0, stack: [], source: 'app.js:9 thrash' }, 40);
+    expect(s.elements()).toEqual([]);
+    expect(s.rates(40).reflows).toBe(0);
+  });
+  it('tick keeps an element that is only being read', () => {
+    const s = new Store(10, 20);
+    const a = el();
+    s.addElementReflow(a, { api: 'offsetWidth', delay: 0, stack: [], source: null }, 70_000);
+    s.tick(70_100);
+    expect(s.elements().map(x => x.element)).toEqual([a]);
+    s.tick(140_000);
+    expect(s.elements()).toEqual([]);
+  });
   it('push copies reflows already attached to the event', () => {
     const s = new Store(10, 20);
     const a = el();

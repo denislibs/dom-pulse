@@ -4,10 +4,15 @@ import { WriteLog } from '../src/write-log';
 import { withInternal } from '../src/internal';
 import { makeEvent } from './helpers';
 
-let log: WriteLog; let restore: () => void; let t = 0; const onHit = vi.fn();
+let log: WriteLog; let restore: () => void; let t = 0;
+const onEvent = vi.fn(); const onElement = vi.fn();
 const origOffset = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth')!;
 
-beforeEach(() => { t = 0; onHit.mockReset(); log = new WriteLog(() => t, () => {}); restore = installReflowPatches(log, onHit, () => t); });
+beforeEach(() => {
+  t = 0; onEvent.mockReset(); onElement.mockReset();
+  log = new WriteLog(() => t, () => {});
+  restore = installReflowPatches(log, { onEvent, onElement }, () => t);
+});
 afterEach(() => restore());
 
 describe('installReflowPatches', () => {
@@ -15,6 +20,8 @@ describe('installReflowPatches', () => {
     const el = document.createElement('div');
     void el.offsetWidth; el.getBoundingClientRect();
     expect(log.size).toBe(0);
+    // Layout is clean with nothing pending, so neither read forced anything.
+    expect(onElement).not.toHaveBeenCalled();
   });
   it('attaches a hit to the last write record with delay and api', () => {
     const el = document.createElement('div');
@@ -26,7 +33,7 @@ describe('installReflowPatches', () => {
     el.getBoundingClientRect();
     window.getComputedStyle(el);
     expect(rec.reflows.map(h => h.api)).toEqual(['offsetWidth', 'getBoundingClientRect', 'getComputedStyle']);
-    expect(onHit).not.toHaveBeenCalled();
+    expect(onEvent).not.toHaveBeenCalled();
   });
   it('attributes the hit to the element that was read, not to the newest write', () => {
     const a = document.createElement('div');
@@ -67,13 +74,21 @@ describe('installReflowPatches', () => {
     expect(recB.reflows.map(h => h.api)).toEqual(['getComputedStyle']);
     a.remove(); b.remove();
   });
-  it('falls back to the newest write when no record relates to the read element', () => {
+  it('charges the element that was read when no record relates to it', () => {
+    // Read-before-write: the element being read has no write record yet, and the one write
+    // in the log is unrelated to it. The forced layout belongs to the element that was read,
+    // never to whoever happened to be written last.
     const a = document.createElement('div');
     const lonely = document.createElement('div');
     document.body.append(a, lonely);
     const recA = log.record(a, 'A');
+    t = 4;
     void lonely.offsetWidth;
-    expect(recA.reflows).toHaveLength(1);
+    expect(recA.reflows).toEqual([]);
+    expect(onElement).toHaveBeenCalledTimes(1);
+    expect(onElement.mock.calls[0][0]).toBe(lonely);
+    expect(onElement.mock.calls[0][1]).toMatchObject({ api: 'offsetWidth', delay: 4 });
+    expect(onElement.mock.calls[0][2]).toBe(4);
     a.remove(); lonely.remove();
   });
   it('notifies when the record already has an event', () => {
@@ -81,21 +96,23 @@ describe('installReflowPatches', () => {
     const rec = log.record(el, undefined);
     rec.event = makeEvent(el);
     void el.clientHeight;
-    expect(onHit).toHaveBeenCalledTimes(1);
-    expect(onHit.mock.calls[0][0]).toBe(rec.event);
-    expect(onHit.mock.calls[0][1].api).toBe('clientHeight');
+    expect(onEvent).toHaveBeenCalledTimes(1);
+    expect(onEvent.mock.calls[0][0]).toBe(rec.event);
+    expect(onEvent.mock.calls[0][1].api).toBe('clientHeight');
   });
   it('ignores internal reads', () => {
     const el = document.createElement('div');
     const rec = log.record(el, undefined);
     withInternal(() => void el.offsetWidth);
     expect(rec.reflows).toHaveLength(0);
+    expect(onElement).not.toHaveBeenCalled();
   });
   it('originals bypass the patch and restore works', () => {
     const el = document.createElement('div');
     const rec = log.record(el, undefined);
     originals.getBoundingClientRect.call(el);
     expect(rec.reflows).toHaveLength(0);
+    expect(onElement).not.toHaveBeenCalled();
     restore();
     expect(Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth')!.get).toBe(origOffset.get);
     restore = () => {};

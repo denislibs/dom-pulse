@@ -59,7 +59,10 @@ export const DomPulse = {
       cleanups.push(() => hud!.destroy());
       const restoreWrites = installWritePatches(log);
       cleanups.push(restoreWrites);
-      const restoreReflow = installReflowPatches(log, (ev, hit) => store.addReflow(ev, hit));
+      const restoreReflow = installReflowPatches(log, {
+        onEvent: (ev, hit) => store.addReflow(ev, hit),
+        onElement: (el, hit, time) => store.addElementReflow(el, hit, time),
+      });
       cleanups.push(restoreReflow);
       observer = createObserver({ store, log, isIgnored }, { include: opts.include, exclude: opts.exclude, kinds: new Set(ALL_KINDS) });
       cleanups.push(() => observer!.disconnect());

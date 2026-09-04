@@ -40,7 +40,7 @@ API: `DomPulse.start(options)`, `stop()`, `pause()`, `resume()`, `reset()`, `run
 
 - Green outline: children changed. Blue: attribute changed. Yellow: text changed.
 - Red, thicker: hot element, more than `hotThreshold` mutations in the last 5 s.
-- Dashed outline: a forced synchronous layout (offsetWidth, getBoundingClientRect, getComputedStyle, …) was read right after this write.
+- Dashed outline: this element's layout was read (offsetWidth, getBoundingClientRect, getComputedStyle, …) while writes of the same frame were still pending — a forced synchronous layout. The mark goes on the element that was *read*, which is often not the element that was written: in a thrash loop each element is measured before it is written.
 - Orange fill: this mutation shifted layout; the fill marks the shifted area.
 
 ## HUD
