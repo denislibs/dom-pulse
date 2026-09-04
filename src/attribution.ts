@@ -125,12 +125,18 @@ export function installWritePatches(log: WriteLog): Restore {
 
   // Provably inert writes -- these are the common ones that leave a record behind
   // without ever producing a MutationRecord.
-  const empty = (v: unknown): boolean => v === '' || v === null || v === undefined;
+  // `innerHTML` is [LegacyNullToEmptyString] DOMString, so only null becomes ''; undefined
+  // stringifies to the text "undefined" and inserts a node (verified in Chrome 148 and in
+  // jsdom). `textContent` and `nodeValue` are nullable, so undefined clears them like null.
+  const emptyHtml = (v: unknown): boolean => v === '' || v === null;
+  const empty = (v: unknown): boolean => emptyHtml(v) || v === undefined;
   const noAttribute: NoopCheck = (s, a) => !(s as Element).hasAttribute(String(a[0]));
   const noAttributeNS: NoopCheck = (s, a) => !(s as Element).hasAttributeNS((a[0] as string | null) ?? null, String(a[1]));
   const emptyHtmlArg: NoopCheck = (_s, a) => a[1] === '';
   // Replacing the children of a childless node with nothing queues no record.
   const clearingEmptyNode: NoopCheck = (s, a) => empty(a[0]) && !isCharacterData(s as Node) && (s as Node).firstChild === null;
+  /** Same, for innerHTML, which is never character data and does not clear on undefined. */
+  const clearingEmptyHtml: NoopCheck = (s, a) => emptyHtml(a[0]) && (s as Node).firstChild === null;
   const unsetProperty: NoopCheck = (s, a) => (s as CSSStyleDeclaration).getPropertyValue(String(a[0])) === '';
 
   const N = Node.prototype;
@@ -145,7 +151,7 @@ export function installWritePatches(log: WriteLog): Restore {
   patchMethod(E, 'removeAttribute', self, attrAt(0), noAttribute);
   patchMethod(E, 'setAttributeNS', self, attrAt(1));
   patchMethod(E, 'removeAttributeNS', self, attrAt(1), noAttributeNS);
-  patchSetter(E, 'innerHTML', self, children, clearingEmptyNode);
+  patchSetter(E, 'innerHTML', self, children, clearingEmptyHtml);
   patchSetter(E, 'outerHTML', parent, children);
   patchSetter(E, 'className', self, attrNamed('class'));
   patchSetter(E, 'id', self, attrNamed('id'));

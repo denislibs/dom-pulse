@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { WriteLog } from '../src/write-log';
+import { makeEvent } from './helpers';
 
 function make() {
   let t = 0;
@@ -30,17 +31,66 @@ describe('WriteLog', () => {
     const upper = log.record(el, 'setAttribute', { kind: 'attributes', attr: 'DATA-Y' });
     expect(log.match(el, 'attributes', 'data-y')).toBe(upper);
   });
-  it('hands the orphaned reflow hits of no-op writes to the real event', () => {
+  it('hands the orphaned reflow hits of no-op writes to a real event', () => {
     const { log } = make();
     const el = document.createElement('div');
     const noop = log.record(el, 'noop', { kind: 'attributes', attr: 'gone' });
     const hit = { api: 'offsetWidth', delay: 1, stack: [], source: null };
     noop.reflows.push(hit);
-    log.record(el, 'real', { kind: 'attributes', attr: 'data-x' });
-    log.match(el, 'attributes', 'data-x');
-    expect(log.takeOrphanReflows(el)).toEqual([hit]);
-    // Taken once only.
-    expect(log.takeOrphanReflows(el)).toEqual([]);
+    const real = log.record(el, 'real', { kind: 'attributes', attr: 'data-x' });
+    expect(log.match(el, 'attributes', 'data-x')).toBe(real);
+    real.event = makeEvent(el);
+    log.drainOrphanReflows();
+    expect(real.event.reflows).toEqual([hit]);
+    expect(noop.reflows).toEqual([]);
+    // Drained once only.
+    log.drainOrphanReflows();
+    expect(real.event.reflows).toEqual([hit]);
+  });
+  it('leaves the hits of a record that has a mutation of its own alone', () => {
+    // The regression this guards: draining while events are still being built takes the
+    // hits of the *second* write to an element -- unmatched only because its own mutation
+    // has not been handled yet -- and moves them onto the first write's event. Run after
+    // the whole batch has been matched, as the observer now does, both records are
+    // matched and neither is mistaken for an orphan.
+    const { log } = make();
+    const el = document.createElement('div');
+    const first = log.record(el, 'first', { kind: 'attributes', attr: 'a' });
+    const second = log.record(el, 'second', { kind: 'attributes', attr: 'b' });
+    const hit = { api: 'offsetWidth', delay: 1, stack: [], source: null };
+    second.reflows.push(hit);
+    expect(log.match(el, 'attributes', 'a')).toBe(first);
+    expect(log.match(el, 'attributes', 'b')).toBe(second);
+    first.event = makeEvent(el);
+    second.event = makeEvent(el, { reflows: [...second.reflows] });
+    log.drainOrphanReflows();
+    expect(first.event.reflows).toEqual([]);
+    expect(second.event.reflows).toEqual([hit]);
+  });
+  it('gives an orphan to the nearest earlier event for the target, else the nearest later one', () => {
+    const { log } = make();
+    const el = document.createElement('div');
+    const other = document.createElement('div');
+    const before = log.record(el, 'before');
+    log.record(other, 'unrelated');
+    const orphan = log.record(el, 'orphan', { kind: 'attributes', attr: 'never' });
+    const after = log.record(el, 'after');
+    const hit = { api: 'offsetWidth', delay: 1, stack: [], source: null };
+    orphan.reflows.push(hit);
+    before.matched = true; before.event = makeEvent(el);
+    after.matched = true; after.event = makeEvent(el);
+    log.drainOrphanReflows();
+    expect(before.event.reflows).toEqual([hit]);  // the newest write that precedes the read
+    expect(after.event.reflows).toEqual([]);
+
+    // With no earlier event for the target, a later one is the hit's only home.
+    log.clear();
+    const lone = log.record(el, 'orphan', { kind: 'attributes', attr: 'never' });
+    lone.reflows.push(hit);
+    const real = log.record(el, 'real');
+    real.matched = true; real.event = makeEvent(el);
+    log.drainOrphanReflows();
+    expect(real.event.reflows).toEqual([hit]);
   });
   it('finds the newest record related to a read element', () => {
     const { log } = make();

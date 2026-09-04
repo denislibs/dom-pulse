@@ -85,19 +85,42 @@ export class WriteLog {
   }
 
   /**
-   * Reflow hits recorded against writes for `target` that never produced a mutation
-   * of their own (a no-op write, or one paired with a mutation elsewhere). Without
-   * this the hit would sit on a record whose `event` stays null forever and be
-   * dropped silently, so it is handed to the target's real event instead. The hits
-   * are removed from those records so a second event cannot collect them again.
+   * Second pass of a mutation batch: hand the reflow hits of writes that produced no
+   * MutationRecord of their own to a real event, so they are not dropped when those
+   * records' `event` stays null for the rest of the frame.
+   *
+   * Must run only once every record of the batch has been offered its mutation. Called
+   * per event while the batch is still being built, it would rob the records that simply
+   * have not been matched *yet*: a later write to the same element is still unmatched
+   * while the earlier write's event is under construction, so its hits would land on the
+   * earlier event and blame the wrong call site. After the matching pass, a record that
+   * is merely waiting for its own event is `matched` and is skipped here.
+   *
+   * A hit only reaches a record while that record is the newest write related to the
+   * element (see `forRead`), so the read provably happened after the orphan write, and
+   * therefore after every write before it and before every write after it. The nearest
+   * *earlier* write to the same target is the closest event that can have caused the
+   * read, so it gets the hit. A later write is used only when the orphan precedes every
+   * real write to that target and is thus the hit's only remaining home. Hits are moved
+   * out of the record, so a second pass cannot deliver them twice.
    */
-  takeOrphanReflows(target: Node): ReflowHit[] {
-    const out: ReflowHit[] = [];
-    for (const r of this.records) {
-      if (r.target !== target || r.matched || r.event || r.reflows.length === 0) continue;
-      out.push(...r.reflows.splice(0));
+  drainOrphanReflows(): void {
+    for (let i = 0; i < this.records.length; i++) {
+      const r = this.records[i];
+      if (r.matched || r.event || r.reflows.length === 0) continue;
+      const host = this.nearestEvent(i, -1) ?? this.nearestEvent(i, 1);
+      if (host) host.reflows.push(...r.reflows.splice(0));
     }
-    return out;
+  }
+
+  /** The event of the nearest record for the same target, scanning from `i` in `step`'s direction. */
+  private nearestEvent(i: number, step: -1 | 1): PulseEvent | null {
+    const { target } = this.records[i];
+    for (let j = i + step; j >= 0 && j < this.records.length; j += step) {
+      const r = this.records[j];
+      if (r.target === target && r.event) return r.event;
+    }
+    return null;
   }
 
   last(): WriteRecord | null {

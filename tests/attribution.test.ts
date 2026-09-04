@@ -36,6 +36,25 @@ describe('installWritePatches', () => {
     expect(log.last()?.target).toBe(t);
     expect(el.textContent).toBe('y');
   });
+  it('records innerHTML = undefined, which inserts a node rather than clearing', () => {
+    // innerHTML is [LegacyNullToEmptyString] DOMString: only null becomes '', while
+    // undefined stringifies and inserts the text "undefined". Suppressing it would drop
+    // a real mutation's call site. (textContent / nodeValue are nullable and do clear.)
+    const el = document.createElement('div');
+    (el as any).innerHTML = undefined;
+    expect(el.textContent).toBe('undefined');
+    expect(log.size).toBe(1);
+    expect(log.last()?.target).toBe(el);
+  });
+  it('still treats a clearing textContent / nodeValue as inert', () => {
+    const el = document.createElement('div');
+    (el as any).textContent = undefined;
+    el.textContent = '';
+    (el as any).innerHTML = null;
+    el.innerHTML = '';
+    expect(el.childNodes).toHaveLength(0);
+    expect(log.size).toBe(0);
+  });
   it('records setAttribute, className and classList against the element', () => {
     const el = document.createElement('div');
     el.setAttribute('a', '1'); expect(log.last()?.target).toBe(el);

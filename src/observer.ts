@@ -95,14 +95,18 @@ export function buildEvents(records: MutationRecord[], deps: ObserverDeps, filte
     const ev: PulseEvent = {
       id: nextId++, time: now, kind, target, node: rec.target, diff, stack, source: sourceKey(stack),
       nodesAffected,
-      // Hits recorded against writes for this node that produced no mutation of their
-      // own would otherwise never reach an event at all.
-      reflows: [...(w ? w.reflows : []), ...deps.log.takeOrphanReflows(rec.target)],
+      reflows: w ? [...w.reflows] : [],
       layoutShift: 0, shiftRects: [],
     };
     if (w) w.event = ev;
     out.push(ev);
   });
+  // Only now that every record of the batch has been offered its mutation is it safe to
+  // move hits off the records that never got one: doing it while events are still being
+  // built would take them from writes that are merely not matched yet. See
+  // WriteLog.drainOrphanReflows -- it appends to the events built above, which the caller
+  // has not pushed to the store yet.
+  deps.log.drainOrphanReflows();
   return out;
 }
 
