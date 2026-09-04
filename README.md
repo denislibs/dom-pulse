@@ -12,6 +12,15 @@ Script tag (auto-starts):
 <script src="dom-pulse.js"></script>
 ```
 
+Load it without starting it -- useful when you want to arm it from the console, or start it only under a flag:
+
+```html
+<script src="dom-pulse.js" data-autostart="false"></script>
+<script>if (location.search.includes('pulse')) window.DomPulse.start();</script>
+```
+
+`window.DomPulse` is assigned either way; only `data-autostart="false"` (exactly that value) suppresses the automatic `start()`.
+
 Bookmarklet:
 
 ```js
@@ -36,7 +45,7 @@ API: `DomPulse.start(options)`, `stop()`, `pause()`, `resume()`, `reset()`, `run
 
 ## HUD
 
-Header: mutations/s, reflows/s, total layout shift, 30 s sparkline. Table: top elements sortable by any column; click a row to scroll to it, click again to open its mutation lane with diffs, stack source and cost marks. Sources: files and functions writing to the DOM most; click to filter the table. Alt+click any element on the page to open its lane. Settings: include/exclude selectors, mutation kinds, min rate, rows.
+Header: mutations/s, reflows/s, total layout shift, 30 s sparkline. Table: top elements sortable by any column; click a row to scroll to it, click again to open its mutation lane with diffs, stack source and cost marks. Click any row in the lane to expand it: the full stack of the write, and for each forced reflow which layout API was read, how long after the write, by which code, with that reader's stack. Sources: files and functions writing to the DOM most; click to filter the table. Alt+click any element on the page to open its lane. Settings: include/exclude selectors, mutation kinds, min rate, rows.
 
 ## Develop
 

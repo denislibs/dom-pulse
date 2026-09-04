@@ -5,15 +5,18 @@
   "type": "module",
   "main": "./dist/dom-pulse.esm.js",
   "module": "./dist/dom-pulse.esm.js",
+  "types": "./dist/types/index.d.ts",
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "node build.mjs",
+    "build": "node build.mjs && npm run build:types",
+    "build:types": "tsc -p tsconfig.build.json",
     "dev": "node build.mjs --watch",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
   },
   "license": "MIT",
   "devDependencies": {
