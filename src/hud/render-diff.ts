@@ -25,15 +25,14 @@ export function renderDiff(d: Diff, context = 12): string {
     return `<b>${escapeHtml(d.name)}</b> <del>${nil(d.oldValue)}</del> → <ins>${nil(d.newValue)}</ins>`;
   }
   if (d.kind === 'text') {
+    // Leading and trailing context windows are the same size: exactly `context`
+    // characters are shown on each side of the change.
     const pre = d.oldValue.slice(Math.max(0, d.changeStart - context), d.changeStart);
-    // Trailing window is one character wider than the leading one so that a boundary
-    // character right after the change (e.g. a space) doesn't silently shrink the
-    // amount of genuinely new trailing context shown to the reader.
-    const post = d.oldValue.slice(d.oldEnd, d.oldEnd + context + 1);
+    const post = d.oldValue.slice(d.oldEnd, d.oldEnd + context);
     const oldMid = d.oldValue.slice(d.changeStart, d.oldEnd);
     const newMid = d.newValue.slice(d.changeStart, d.newEnd);
     const lead = d.changeStart > context ? '…' : '';
-    const tail = d.oldEnd + context + 1 < d.oldValue.length ? '…' : '';
+    const tail = d.oldEnd + context < d.oldValue.length ? '…' : '';
     return `<b>text</b> "${lead}${escapeHtml(pre)}<del>${escapeHtml(oldMid)}</del><ins>${escapeHtml(newMid)}</ins>${escapeHtml(post)}${tail}"`;
   }
   const parts: string[] = [];

@@ -32,7 +32,7 @@ describe('renderDiff', () => {
   });
   it('renders text with context and ellipses', () => {
     const d = textDiff('0123456789abcdefghij count: 41 0123456789abcdefghij', '0123456789abcdefghij count: 42 0123456789abcdefghij');
-    expect(renderDiff(d)).toBe('<b>text</b> "…hij count: 4<del>1</del><ins>2</ins> 0123456789ab…"');
+    expect(renderDiff(d)).toBe('<b>text</b> "…hij count: 4<del>1</del><ins>2</ins> 0123456789a…"');
   });
   it('renders children with counts and recreation', () => {
     const li = () => document.createElement('li');
