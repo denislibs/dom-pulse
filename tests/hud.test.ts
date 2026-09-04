@@ -97,4 +97,45 @@ describe('Hud', () => {
     hud!.destroy(); hud = null;
     expect(host.isConnected).toBe(false);
   });
+  it('rendering a stale selection does not resurrect a pruned Store entry', () => {
+    const { store, el, q } = setup();
+    store.push(makeEvent(el, { time: performance.now() }));
+    hud!.select(el);
+    expect(q('.lane').hidden).toBe(false);
+    expect(store.elements().length).toBe(1);
+
+    // The element is removed from the page and the store prunes it on its next tick.
+    el.remove();
+    store.tick(performance.now());
+    expect(store.elements().length).toBe(0);
+
+    // render() must not resurrect the pruned element just to read a label for the lane.
+    hud!.render();
+    expect(store.elements().length).toBe(0);
+    expect(q('.lane').hidden).toBe(true);
+
+    // A second render (the next 250ms tick, in real use) must not surface a ghost row
+    // that a prior render's side effect would otherwise have recreated.
+    hud!.render();
+    expect(store.elements().length).toBe(0);
+    expect(q('tbody').textContent).toContain('no mutations yet');
+  });
+  it('drag ends itself when a pointermove reports no buttons held, even without a pointerup', () => {
+    const { q } = setup();
+    const head = q('.head');
+    head.dispatchEvent(new PointerEvent('pointerdown', { clientX: 100, clientY: 50, pointerId: 1, bubbles: true }));
+
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 120, clientY: 70, buttons: 1, pointerId: 1 }));
+    const leftAfterFirstMove = hud!.host.style.left;
+    expect(leftAfterFirstMove).not.toBe('');
+
+    // Simulate the pointer being released outside the window / over a cross-origin
+    // iframe: no pointerup ever arrives, but the next pointermove reports no buttons.
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 150, clientY: 90, buttons: 0, pointerId: 1 }));
+
+    // A further pointermove -- even reporting a button held, as a stray/late event
+    // could -- must no longer reposition the panel: the drag already ended itself.
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 999, clientY: 999, buttons: 1, pointerId: 1 }));
+    expect(hud!.host.style.left).toBe(leftAfterFirstMove);
+  });
 });

@@ -117,17 +117,30 @@ export class Hud {
       }).join('') || '<tr><td colspan="6" class="empty">no mutations yet</td></tr>';
       for (const th of this.el.thead.querySelectorAll('th[data-sort]')) th.classList.toggle('sorted', th.getAttribute('data-sort') === s.sortKey);
 
-      const showLane = s.selected !== null && s.expanded;
-      this.el.lane.hidden = !showLane;
+      let showLane = s.selected !== null && s.expanded;
       if (showLane && s.selected) {
-        const label = escapeHtml(this.store.stats(s.selected).label);
-        const evs = this.store.eventsFor(s.selected).slice(-20).reverse();
-        this.el.lane.innerHTML = `<div class="lane-title">${label}</div>` + (evs.map(ev => {
-          const meta = [ev.reflows.length ? `⟲${ev.reflows.length}` : '', ev.layoutShift ? `↕${ev.layoutShift.toFixed(3)}` : '', ev.source ? escapeHtml(ev.source) : '<i>unknown source</i>']
-            .filter(Boolean).join(' ');
-          return `<div class="ev"><span class="k ${ev.kind}">${KIND_LABEL[ev.kind]}</span> ${renderDiff(ev.diff)} <span class="meta">${meta}</span></div>`;
-        }).join('') || '<div class="empty">no recorded mutations for this element</div>');
+        // Store.stats() is get-or-create: calling it here just to read a label would
+        // resurrect a pruned/never-tracked element as a fresh zero-value entry on every
+        // render, which then leaks into the next topElements() call as a ghost row.
+        // Look up an existing entry instead -- render() must never mutate the Store.
+        const tracked = this.store.elements().find(x => x.element === s.selected);
+        if (!tracked) {
+          // The selection is stale (its element was pruned, or was never tracked).
+          // Drop it and collapse the lane rather than showing a ghost row.
+          s.selected = null;
+          s.expanded = false;
+          showLane = false;
+        } else {
+          const label = escapeHtml(tracked.label);
+          const evs = this.store.eventsFor(s.selected).slice(-20).reverse();
+          this.el.lane.innerHTML = `<div class="lane-title">${label}</div>` + (evs.map(ev => {
+            const meta = [ev.reflows.length ? `⟲${ev.reflows.length}` : '', ev.layoutShift ? `↕${ev.layoutShift.toFixed(3)}` : '', ev.source ? escapeHtml(ev.source) : '<i>unknown source</i>']
+              .filter(Boolean).join(' ');
+            return `<div class="ev"><span class="k ${ev.kind}">${KIND_LABEL[ev.kind]}</span> ${renderDiff(ev.diff)} <span class="meta">${meta}</span></div>`;
+          }).join('') || '<div class="empty">no recorded mutations for this element</div>');
+        }
       }
+      this.el.lane.hidden = !showLane;
 
       const sources = this.store.topSources(8);
       this.sourceKeys = sources.map(x => x.key);
@@ -190,14 +203,25 @@ export class Hud {
       const r = withInternal(() => this.host.getBoundingClientRect());
       this.drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
       withInternal(() => { this.host.style.right = 'auto'; this.host.style.bottom = 'auto'; this.host.style.left = r.left + 'px'; this.host.style.top = r.top + 'px'; });
+      // Capture the pointer so move/up keep arriving here even if the cursor leaves the
+      // panel (e.g. over a cross-origin iframe). Not every environment implements this
+      // (jsdom doesn't), so guard the call.
+      if (typeof this.el.head.setPointerCapture === 'function') {
+        try { this.el.head.setPointerCapture(e.pointerId); } catch { /* not supported here */ }
+      }
       e.preventDefault();
     });
     window.addEventListener('pointermove', this.onMove);
     window.addEventListener('pointerup', this.onUp);
+    window.addEventListener('pointercancel', this.onUp);
   }
 
   private onMove = (e: PointerEvent): void => {
     if (!this.drag) return;
+    // Self-correcting safety net: if pointerup/pointercancel never arrived (pointer
+    // released outside the window, or over a cross-origin iframe) but the browser
+    // reports no buttons held, end the drag instead of following the cursor forever.
+    if (e.buttons === 0) { this.onUp(); return; }
     withInternal(() => { this.host.style.left = e.clientX - this.drag!.dx + 'px'; this.host.style.top = e.clientY - this.drag!.dy + 'px'; });
   };
   private onUp = (): void => {
@@ -218,6 +242,7 @@ export class Hud {
     clearInterval(this.timer);
     window.removeEventListener('pointermove', this.onMove);
     window.removeEventListener('pointerup', this.onUp);
+    window.removeEventListener('pointercancel', this.onUp);
     withInternal(() => this.host.remove());
   }
 }
