@@ -19,11 +19,6 @@ export interface WriteRecord {
   reflows: ReflowHit[];
   event: PulseEvent | null;
   matched: boolean;
-  /**
-   * Set when `drainOrphanReflows` has looked for a host event for this record and found
-   * none, so later batches of the same frame do not rescan it. See the drain's docblock.
-   */
-  hostless: boolean;
 }
 
 /**
@@ -56,7 +51,7 @@ export class WriteLog {
   ) {}
 
   record(target: Node, stack: string | undefined, hint: WriteHint | null = null): WriteRecord {
-    const r: WriteRecord = { target, hint, stack, time: this.now(), reflows: [], event: null, matched: false, hostless: false };
+    const r: WriteRecord = { target, hint, stack, time: this.now(), reflows: [], event: null, matched: false };
     if (this.records.length >= this.max) this.records.shift();
     this.records.push(r);
     if (!this.frameScheduled) {
@@ -126,19 +121,20 @@ export class WriteLog {
    * built this batch has not reached the store yet, while one pushed in an earlier batch of
    * the same frame must go through `Store.addReflow` so the counters see the hit.
    *
-   * A record for which no host exists is flagged `hostless` and skipped from then on. It
-   * cannot gain an *earlier* host later: writes are recorded and their mutations delivered
-   * in the same order, so any earlier record with a mutation of its own already had its
-   * event by the time this drain ran. Only the forward fallback can be forfeited that way,
-   * and that is the deliberately imprecise path described above.
+   * A record for which no host exists in this batch is left alone and retried in later
+   * batches of the same frame, not flagged off. `match()` hands a mutation to the OLDEST
+   * unmatched record that fits it, so a record that produced no mutation of its own in this
+   * batch can still be handed a later batch's MutationRecord for the same target, acquiring
+   * an event it did not have here. That newly-matched record can then serve as an *earlier*
+   * host for some other still-orphaned record on a subsequent call, so a record cannot be
+   * permanently ruled out after one drain that merely found nothing yet.
    */
   drainOrphanReflows(deliver: (host: PulseEvent, hits: ReflowHit[]) => void): void {
     for (let i = 0; i < this.records.length; i++) {
       const r = this.records[i];
-      if (r.matched || r.event || r.hostless || r.reflows.length === 0) continue;
+      if (r.matched || r.event || r.reflows.length === 0) continue;
       const host = this.nearestEvent(i, -1) ?? this.nearestEvent(i, 1);
       if (host) deliver(host, r.reflows.splice(0));
-      else r.hostless = true;
     }
   }
 
@@ -149,7 +145,7 @@ export class WriteLog {
   private nearestEvent(i: number, step: -1 | 1): PulseEvent | null {
     const { target } = this.records[i];
     const stop = step < 0
-      ? Math.max(-1, i - MAX_HOST_SCAN)
+      ? Math.max(-1, i - MAX_HOST_SCAN - 1)
       : Math.min(this.records.length, i + MAX_HOST_SCAN + 1);
     for (let j = i + step; j !== stop; j += step) {
       const r = this.records[j];

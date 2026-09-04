@@ -170,6 +170,31 @@ describe('write attribution', () => {
     expect(reflowsOf(evs[1].source)).toBe(0);
     expect(store.rates(0)).toEqual({ mutations: 2, reflows: 1 });
   });
+  it('recovers a hostless orphan once an earlier write is retroactively matched', async () => {
+    // Two hint-compatible no-op writes to one element: neither produces a MutationRecord,
+    // so both stay unmatched and event-less after batch 1's drain -- there is no host for
+    // either yet, so the read's hit (charged to the second, newer one by forRead) is left
+    // in place rather than delivered. An unrelated mutation elsewhere closes batch 1 so the
+    // drain actually runs. Batch 2 then does a real appendChild on the same element: match()
+    // hands that MutationRecord to the OLDEST unmatched fitting record -- the *first* no-op
+    // write -- not to the appendChild's own write record. That retroactively gives the first
+    // write an event, which is an earlier host the second write's orphaned hit can now reach.
+    // Losing this hit was the reported defect: at the previous commit `reflows` is 1, at the
+    // regressed head (which flags a hostless record off after one miss) it is 0.
+    libC_noopReplaceChildren(root);
+    libC_noopReplaceChildren(root);
+    measure(root);
+    document.body.setAttribute('data-close-batch', '1'); // unrelated mutation, closes batch 1
+    await flush();
+    root.appendChild(document.createElement('i')); // batch 2: real mutation on root
+    await flush();
+    const evs = store.eventsFor(root);
+    expect(evs).toHaveLength(1);
+    expect(evs[0].source).toContain('libC_noopReplaceChildren');
+    expect(evs[0].reflows.map(h => h.api)).toEqual(['offsetWidth']);
+    expect(store.stats(root).reflows).toBe(1);
+    expect(reflowsOf(evs[0].source)).toBe(1);
+  });
   it('counts a within-batch orphan hit exactly once', async () => {
     // The counterpart: both events are still under construction when the drain runs, so
     // Store.push applies their `reflows` itself. Routing a fresh event's orphan hits
