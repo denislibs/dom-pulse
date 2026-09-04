@@ -1,6 +1,8 @@
 import type { StackFrame } from './types';
 
-/** Wrapper functions created by DOM Pulse are named with this prefix so they can be cut from stacks. */
+/** Wrapper functions created by DOM Pulse are named with this prefix so they can be cut from stacks.
+ * Uses containment check (includes) not prefix match: V8 prepends the receiver's constructor name to method frames,
+ * so a patched setAttribute appears as "HTMLDivElement.__domPulse_setAttribute" in the stack. */
 export const INTERNAL_PREFIX = '__domPulse_';
 
 const CHROME = /^\s*at (?:(.*?) \()?(.+?):(\d+):(\d+)\)?\s*$/;
