@@ -19,7 +19,20 @@ export interface WriteRecord {
   reflows: ReflowHit[];
   event: PulseEvent | null;
   matched: boolean;
+  /**
+   * Set when `drainOrphanReflows` has looked for a host event for this record and found
+   * none, so later batches of the same frame do not rescan it. See the drain's docblock.
+   */
+  hostless: boolean;
 }
+
+/**
+ * How far `nearestEvent` walks in each direction. A frame holds up to `max` records, and
+ * a record for the same target further away than this is not a credible cause of the read
+ * anyway; the bound keeps a pathological frame (thousands of unmatched writes) from turning
+ * the drain into a full scan per orphan.
+ */
+const MAX_HOST_SCAN = 200;
 
 /** True when `rec` could plausibly have produced a mutation of this kind/attribute. */
 function fits(rec: WriteRecord, kind: MutationKind | undefined, attr: string | null | undefined): boolean {
@@ -43,7 +56,7 @@ export class WriteLog {
   ) {}
 
   record(target: Node, stack: string | undefined, hint: WriteHint | null = null): WriteRecord {
-    const r: WriteRecord = { target, hint, stack, time: this.now(), reflows: [], event: null, matched: false };
+    const r: WriteRecord = { target, hint, stack, time: this.now(), reflows: [], event: null, matched: false, hostless: false };
     if (this.records.length >= this.max) this.records.shift();
     this.records.push(r);
     if (!this.frameScheduled) {
@@ -101,22 +114,44 @@ export class WriteLog {
    * therefore after every write before it and before every write after it. The nearest
    * *earlier* write to the same target is the closest event that can have caused the
    * read, so it gets the hit. A later write is used only when the orphan precedes every
-   * real write to that target and is thus the hit's only remaining home. Hits are moved
-   * out of the record, so a second pass cannot deliver them twice.
+   * real write to that target and is thus the hit's only remaining home.
+   *
+   * Known imprecision, deliberately kept: that forward fallback charges a write that ran
+   * *after* the read, so its call site is blamed for a forced reflow it cannot have caused.
+   * The alternative is dropping the hit entirely, which is the very thing this pass exists
+   * to prevent, so the misattribution is accepted as best effort -- it is not a bug.
+   *
+   * Hits are handed to `deliver` and removed from the record, so a second pass cannot
+   * deliver them twice. The caller decides how each host takes them: an event still being
+   * built this batch has not reached the store yet, while one pushed in an earlier batch of
+   * the same frame must go through `Store.addReflow` so the counters see the hit.
+   *
+   * A record for which no host exists is flagged `hostless` and skipped from then on. It
+   * cannot gain an *earlier* host later: writes are recorded and their mutations delivered
+   * in the same order, so any earlier record with a mutation of its own already had its
+   * event by the time this drain ran. Only the forward fallback can be forfeited that way,
+   * and that is the deliberately imprecise path described above.
    */
-  drainOrphanReflows(): void {
+  drainOrphanReflows(deliver: (host: PulseEvent, hits: ReflowHit[]) => void): void {
     for (let i = 0; i < this.records.length; i++) {
       const r = this.records[i];
-      if (r.matched || r.event || r.reflows.length === 0) continue;
+      if (r.matched || r.event || r.hostless || r.reflows.length === 0) continue;
       const host = this.nearestEvent(i, -1) ?? this.nearestEvent(i, 1);
-      if (host) host.reflows.push(...r.reflows.splice(0));
+      if (host) deliver(host, r.reflows.splice(0));
+      else r.hostless = true;
     }
   }
 
-  /** The event of the nearest record for the same target, scanning from `i` in `step`'s direction. */
+  /**
+   * The event of the nearest record for the same target, scanning from `i` in `step`'s
+   * direction and giving up after `MAX_HOST_SCAN` records.
+   */
   private nearestEvent(i: number, step: -1 | 1): PulseEvent | null {
     const { target } = this.records[i];
-    for (let j = i + step; j >= 0 && j < this.records.length; j += step) {
+    const stop = step < 0
+      ? Math.max(-1, i - MAX_HOST_SCAN)
+      : Math.min(this.records.length, i + MAX_HOST_SCAN + 1);
+    for (let j = i + step; j !== stop; j += step) {
       const r = this.records[j];
       if (r.target === target && r.event) return r.event;
     }

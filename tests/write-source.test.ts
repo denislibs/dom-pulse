@@ -148,4 +148,41 @@ describe('write attribution', () => {
     expect(ev.source).toContain('libB_setAttribute');
     expect(ev.reflows.map(h => h.api)).toEqual(['offsetWidth']);
   });
+  it('counts an orphan hit drained onto an event pushed in an earlier batch', async () => {
+    // One frame, two mutation batches. `first`'s event is already in the store by the time
+    // the orphan write happens, so the drain cannot simply push onto that event's `reflows`
+    // array: every counter (element stats, the Sources panel, the reflow rate) was fed by
+    // Store.push at that point and would never see the hit.
+    first(root);
+    await flush();                    // batch 1: first's event is built and pushed
+    libC_noopReplaceChildren(root);   // orphan write, queues no MutationRecord
+    measure(root);                    // the read is charged to the orphan record
+    second(root);
+    await flush();                    // batch 2: the drain runs
+    const evs = store.eventsFor(root);
+    expect(evs).toHaveLength(2);
+    expect(evs[0].source).toContain('first');
+    expect(evs[1].source).toContain('second');
+    // The nearest earlier write to the target hosts the hit -- and must be counted there.
+    expect(evs[0].reflows.map(h => h.api)).toEqual(['offsetWidth']);
+    expect(store.stats(root).reflows).toBe(1);
+    expect(reflowsOf(evs[0].source)).toBe(1);
+    expect(reflowsOf(evs[1].source)).toBe(0);
+    expect(store.rates(0)).toEqual({ mutations: 2, reflows: 1 });
+  });
+  it('counts a within-batch orphan hit exactly once', async () => {
+    // The counterpart: both events are still under construction when the drain runs, so
+    // Store.push applies their `reflows` itself. Routing a fresh event's orphan hits
+    // through Store.addReflow as well would count this one twice.
+    first(root); second(root); libC_noopReplaceChildren(root); measure(root);
+    await flush();
+    const evs = store.eventsFor(root);
+    expect(evs).toHaveLength(2);
+    expect(evs[0].reflows).toEqual([]);
+    expect(evs[1].reflows.map(h => h.api)).toEqual(['offsetWidth']);
+    expect(store.stats(root).reflows).toBe(1);
+    expect(reflowsOf(evs[0].source)).toBe(0);
+    expect(reflowsOf(evs[1].source)).toBe(1);
+    expect(store.rates(0)).toEqual({ mutations: 2, reflows: 1 });
+  });
 });

@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { WriteLog } from '../src/write-log';
 import { makeEvent } from './helpers';
+import type { PulseEvent, ReflowHit } from '../src/types';
+
+/** What the observer does for an event it is still building: Store.push applies these. */
+const deliver = (host: PulseEvent, hits: ReflowHit[]) => { host.reflows.push(...hits); };
 
 function make() {
   let t = 0;
@@ -40,11 +44,11 @@ describe('WriteLog', () => {
     const real = log.record(el, 'real', { kind: 'attributes', attr: 'data-x' });
     expect(log.match(el, 'attributes', 'data-x')).toBe(real);
     real.event = makeEvent(el);
-    log.drainOrphanReflows();
+    log.drainOrphanReflows(deliver);
     expect(real.event.reflows).toEqual([hit]);
     expect(noop.reflows).toEqual([]);
     // Drained once only.
-    log.drainOrphanReflows();
+    log.drainOrphanReflows(deliver);
     expect(real.event.reflows).toEqual([hit]);
   });
   it('leaves the hits of a record that has a mutation of its own alone', () => {
@@ -63,7 +67,7 @@ describe('WriteLog', () => {
     expect(log.match(el, 'attributes', 'b')).toBe(second);
     first.event = makeEvent(el);
     second.event = makeEvent(el, { reflows: [...second.reflows] });
-    log.drainOrphanReflows();
+    log.drainOrphanReflows(deliver);
     expect(first.event.reflows).toEqual([]);
     expect(second.event.reflows).toEqual([hit]);
   });
@@ -79,7 +83,7 @@ describe('WriteLog', () => {
     orphan.reflows.push(hit);
     before.matched = true; before.event = makeEvent(el);
     after.matched = true; after.event = makeEvent(el);
-    log.drainOrphanReflows();
+    log.drainOrphanReflows(deliver);
     expect(before.event.reflows).toEqual([hit]);  // the newest write that precedes the read
     expect(after.event.reflows).toEqual([]);
 
@@ -89,8 +93,43 @@ describe('WriteLog', () => {
     lone.reflows.push(hit);
     const real = log.record(el, 'real');
     real.matched = true; real.event = makeEvent(el);
-    log.drainOrphanReflows();
+    log.drainOrphanReflows(deliver);
     expect(real.event.reflows).toEqual([hit]);
+  });
+  it('hands each orphan to the caller, which decides how the host takes the hits', () => {
+    // The observer routes hits differently for an event of the current batch (not pushed
+    // yet) and one pushed in an earlier batch of the same frame, so the drain must report
+    // the host rather than mutate its array itself.
+    const { log } = make();
+    const el = document.createElement('div');
+    const orphan = log.record(el, 'orphan', { kind: 'attributes', attr: 'never' });
+    const hit = { api: 'offsetWidth', delay: 1, stack: [], source: null };
+    orphan.reflows.push(hit);
+    const real = log.record(el, 'real');
+    real.matched = true; real.event = makeEvent(el);
+    const seen: Array<[PulseEvent, ReflowHit[]]> = [];
+    log.drainOrphanReflows((host, hits) => { seen.push([host, hits]); });
+    expect(seen).toEqual([[real.event, [hit]]]);
+    expect(real.event.reflows).toEqual([]);   // untouched: delivery is the caller's job
+    expect(orphan.reflows).toEqual([]);       // taken out of the record all the same
+  });
+  it('does not rescan a record for which no host event exists', () => {
+    // The bound on the scan: a record that found no host is flagged and skipped from then
+    // on, so a frame full of hit-carrying orphans costs one scan each, not one per batch.
+    // The cost is the forward fallback -- a host appearing in a later batch is forfeited,
+    // which is the deliberately imprecise "blame a write that ran after the read" path.
+    const { log } = make();
+    const el = document.createElement('div');
+    const orphan = log.record(el, 'orphan', { kind: 'attributes', attr: 'never' });
+    const hit = { api: 'offsetWidth', delay: 1, stack: [], source: null };
+    orphan.reflows.push(hit);
+    log.drainOrphanReflows(deliver);          // no event anywhere: nothing to deliver to
+    expect(orphan.reflows).toEqual([hit]);
+    const later = log.record(el, 'later');
+    later.matched = true; later.event = makeEvent(el);
+    log.drainOrphanReflows(deliver);
+    expect(later.event.reflows).toEqual([]);
+    expect(orphan.reflows).toEqual([hit]);
   });
   it('finds the newest record related to a read element', () => {
     const { log } = make();

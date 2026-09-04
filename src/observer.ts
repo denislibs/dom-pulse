@@ -104,9 +104,18 @@ export function buildEvents(records: MutationRecord[], deps: ObserverDeps, filte
   // Only now that every record of the batch has been offered its mutation is it safe to
   // move hits off the records that never got one: doing it while events are still being
   // built would take them from writes that are merely not matched yet. See
-  // WriteLog.drainOrphanReflows -- it appends to the events built above, which the caller
-  // has not pushed to the store yet.
-  deps.log.drainOrphanReflows();
+  // WriteLog.drainOrphanReflows.
+  //
+  // A write log spans a whole animation frame, which normally holds several mutation
+  // batches, so the host of an orphan hit is often an event pushed in an earlier batch.
+  // Only the events built above are still on their way to the store, where Store.push
+  // applies `ev.reflows` itself; those take their hits directly, and anything else has to
+  // go through Store.addReflow, or the hit reaches no counter and nothing re-renders.
+  const fresh = new Set(out);
+  deps.log.drainOrphanReflows((host, hits) => {
+    if (fresh.has(host)) host.reflows.push(...hits);
+    else for (const hit of hits) deps.store.addReflow(host, hit);
+  });
   return out;
 }
 
