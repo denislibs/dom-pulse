@@ -1,6 +1,7 @@
 import { Store } from './store';
 import { originals } from './cost/reflow';
 import { withInternal } from './internal';
+import { warnOnce } from './warn';
 import type { ElementStats, MutationKind, Rect } from './types';
 
 export const FADE_MS = 1500;
@@ -76,9 +77,14 @@ export class Overlay {
   }
 
   private frame = (): void => {
-    const more = this.draw(performance.now());
-    if (more) this.raf = requestAnimationFrame(this.frame);
-    else this.running = false;
+    try {
+      const more = this.draw(performance.now());
+      if (more) this.raf = requestAnimationFrame(this.frame);
+      else this.running = false;
+    } catch (err) {
+      this.running = false;
+      warnOnce('overlay-draw', err);
+    }
   };
 
   /** Draws one frame; returns true while there is something still fading. */

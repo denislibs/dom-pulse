@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { frameStyle, Overlay, FADE_MS } from '../src/overlay';
 import { Store } from '../src/store';
 import { makeEvent } from './helpers';
+import { resetWarnings } from '../src/warn';
 
 // jsdom has no real canvas backend: `canvas.getContext('2d')` is expected to
 // return null (the exact behavior this module is built to tolerate), but
@@ -74,6 +75,56 @@ describe('Overlay', () => {
     expect(o.draw(100 + FADE_MS + 1)).toBe(false);
     o.highlight(s.element);
     expect(o.draw(performance.now())).toBe(true);
+    o.destroy();
+  });
+  it('recovers from exceptions in draw and allows wake to reschedule', () => {
+    resetWarnings();
+    const store = new Store(10, 20);
+    let rafCallCount = 0;
+    const throwingRectOf = (el: Element) => {
+      throw new Error('rectOf error');
+    };
+
+    const o = new Overlay(store, throwingRectOf);
+    const warnSpy = vi.spyOn(console, 'warn');
+    const drawSpy = vi.spyOn(o, 'draw').mockImplementation(() => {
+      throw new Error('draw error for testing');
+    });
+
+    // Stub requestAnimationFrame to invoke its callback synchronously and track calls
+    const originalRAF = globalThis.requestAnimationFrame;
+    const now = performance.now();
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+      rafCallCount++;
+      // Invoke synchronously
+      cb(now);
+      return 0;
+    }) as typeof requestAnimationFrame;
+
+    // First wake() schedules frame, which calls draw and throws
+    // The exception should be caught by the frame method and running reset to false
+    expect(() => o.wake()).not.toThrow();
+
+    // Verify draw was called
+    expect(drawSpy).toHaveBeenCalled();
+
+    // Verify the error was reported once
+    expect(warnSpy).toHaveBeenCalledWith('[dom-pulse] overlay-draw:', expect.any(Error));
+    expect(warnSpy.mock.calls.length).toBe(1);
+
+    const rafCallsAfterFirstWake = rafCallCount;
+
+    // Second wake() should schedule another frame since running was reset to false
+    // If the fix failed, wake() would return early (running still true) and rafCallCount wouldn't increase
+    expect(() => o.wake()).not.toThrow();
+
+    // Verify requestAnimationFrame was called again (proving wake didn't return early)
+    expect(rafCallCount).toBeGreaterThan(rafCallsAfterFirstWake);
+
+    // Restore
+    globalThis.requestAnimationFrame = originalRAF;
+    warnSpy.mockRestore();
+    drawSpy.mockRestore();
     o.destroy();
   });
 });
