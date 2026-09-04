@@ -15,10 +15,12 @@ export type { Options, PulseEvent, ElementStats, SourceStats, Diff } from './typ
 export interface DomPulseOptions extends Partial<Options> {}
 
 interface Instance {
-  store: Store; overlay: Overlay; hud: Hud;
-  observer: ReturnType<typeof createObserver>;
-  restoreWrites: () => void; restoreReflow: () => void; stopShift: () => void;
-  timer: number; clickHandler: (e: MouseEvent) => void;
+  store: Store; hud: Hud;
+  // The single source of truth for tearing this instance down. Both stop() and
+  // the failed-start catch path in start() unwind this same array, in reverse
+  // registration order -- there is exactly one place that knows how to tear an
+  // instance down, so a partial-start path and stop() can never drift apart.
+  cleanups: Array<() => void>;
 }
 
 let inst: Instance | null = null;
@@ -28,6 +30,10 @@ function detectSelfFile(): string | undefined {
   const src = (document.currentScript as HTMLScriptElement | null)?.src;
   if (src) return src;
   return parseStack(new Error().stack)[0]?.file;
+}
+
+function unwind(cleanups: Array<() => void>): void {
+  for (const c of cleanups.reverse()) { try { c(); } catch { /* never break the page while unwinding */ } }
 }
 
 export const DomPulse = {
@@ -75,21 +81,20 @@ export const DomPulse = {
         if (!t || isIgnored(t)) return;
         try {
           e.preventDefault(); e.stopPropagation();
-          // select() only opens the lane for an element the Store already tracks
-          // (it refuses to resurrect an untracked element as a side effect of
-          // rendering); registering it here is what makes Alt+click work on an
-          // element that hasn't produced a mutation yet.
-          store.stats(t);
+          // hud.select() renders a lane for this element whether or not the Store
+          // already tracks it -- for an untracked-but-connected element it falls
+          // back to computing the label directly, so nothing here needs to (or may)
+          // register the element in the Store as a side effect of Alt+click.
           hud.select(t);
           overlay.highlight(t);
         } catch (err) { warnOnce('click', err); }
       };
       document.addEventListener('click', clickHandler, true);
       cleanups.push(() => document.removeEventListener('click', clickHandler, true));
-      inst = { store, overlay, hud, observer, restoreWrites, restoreReflow, stopShift, timer, clickHandler };
+      inst = { store, hud, cleanups };
     } catch (e) {
       warnOnce('start', e);
-      for (const c of cleanups.reverse()) { try { c(); } catch { /* never break the page while unwinding */ } }
+      unwind(cleanups);
       // Belt and braces: remove any stray marked nodes a cleanup above missed.
       document.querySelectorAll('[data-dom-pulse]').forEach(n => withInternal(() => n.remove()));
     }
@@ -104,14 +109,7 @@ export const DomPulse = {
       document.querySelectorAll('[data-dom-pulse]').forEach(n => withInternal(() => n.remove()));
       return;
     }
-    document.removeEventListener('click', i.clickHandler, true);
-    clearInterval(i.timer);
-    i.observer.disconnect();
-    i.stopShift();
-    i.hud.destroy();
-    i.overlay.destroy();
-    i.restoreReflow();
-    i.restoreWrites();
+    unwind(i.cleanups);
   },
 
   pause(): void { if (inst) { inst.store.paused = true; inst.hud.setPaused(true); } },

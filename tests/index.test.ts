@@ -73,6 +73,24 @@ describe('DomPulse', () => {
     expect((hud.querySelector('.lane') as HTMLElement).hidden).toBe(false);
     expect(hud.querySelector('.lane-title')!.textContent).toBe('p#alt');
   });
+  it('alt+click on a never-mutated element opens its lane without registering it in the Store', async () => {
+    DomPulse.start();
+    const el = document.createElement('span'); el.id = 'idle'; document.body.appendChild(el);
+    await flush();
+    // el has never mutated -- no push() into the Store has happened for it.
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true, altKey: true }));
+    const hud = document.querySelector('[data-dom-pulse="hud"]')!.shadowRoot!;
+    expect((hud.querySelector('.lane') as HTMLElement).hidden).toBe(false);
+    expect(hud.querySelector('.lane-title')!.textContent).toBe('span#idle');
+    expect(hud.querySelector('.lane')!.textContent).toContain('no recorded mutations for this element');
+    // Appending el to <body> is itself a real mutation of <body>, which legitimately
+    // shows up as a row -- that's not the bug. The bug would be el itself (never
+    // mutated) also showing up as a zero-value row, which is what store.stats(t)
+    // used to do as a side effect of the click handler. This is the indirect,
+    // black-box proof (index.ts does not expose the Store) that Alt+click never
+    // registers the clicked element in the Store just to open its lane.
+    expect(hud.querySelector('tbody')!.textContent).not.toContain('span#idle');
+  });
   it('unwinds patches and DOM nodes if start fails partway through construction', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const OriginalMO = window.MutationObserver;

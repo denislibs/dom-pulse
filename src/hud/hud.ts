@@ -1,5 +1,6 @@
 import { Store } from '../store';
 import { withInternal } from '../internal';
+import { describeNode } from '../describe';
 import { STYLES } from './styles';
 import { renderDiff, escapeHtml } from './render-diff';
 import { drawSparkline } from './sparkline';
@@ -124,14 +125,19 @@ export class Hud {
         // render, which then leaks into the next topElements() call as a ghost row.
         // Look up an existing entry instead -- render() must never mutate the Store.
         const tracked = this.store.elements().find(x => x.element === s.selected);
-        if (!tracked) {
-          // The selection is stale (its element was pruned, or was never tracked).
-          // Drop it and collapse the lane rather than showing a ghost row.
+        if (!tracked && !s.selected.isConnected) {
+          // The selection is stale: the element was tracked at some point (or never
+          // was) but has since left the document -- e.g. removed from the page and
+          // pruned on a later tick(). Drop it and collapse the lane rather than
+          // showing a ghost row for an element the user can no longer see or locate.
           s.selected = null;
           s.expanded = false;
           showLane = false;
         } else {
-          const label = escapeHtml(tracked.label);
+          // Either tracked (use its recorded label), or connected but never mutated
+          // (fall back to the same side-effect-free describeNode() used to build
+          // labels in the first place, without registering the element in the Store).
+          const label = escapeHtml(tracked ? tracked.label : describeNode(s.selected));
           const evs = this.store.eventsFor(s.selected).slice(-20).reverse();
           this.el.lane.innerHTML = `<div class="lane-title">${label}</div>` + (evs.map(ev => {
             const meta = [ev.reflows.length ? `⟲${ev.reflows.length}` : '', ev.layoutShift ? `↕${ev.layoutShift.toFixed(3)}` : '', ev.source ? escapeHtml(ev.source) : '<i>unknown source</i>']

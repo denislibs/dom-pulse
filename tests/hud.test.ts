@@ -120,6 +120,28 @@ describe('Hud', () => {
     expect(store.elements().length).toBe(0);
     expect(q('tbody').textContent).toContain('no mutations yet');
   });
+  it('select() opens a lane for a connected element the Store has never tracked, using a fallback label', () => {
+    const { store, q } = setup();
+    const el = document.createElement('button'); el.id = 'never'; document.body.appendChild(el);
+    hud!.select(el);
+    expect(q('.lane').hidden).toBe(false);
+    expect(q('.lane .lane-title').textContent).toBe('button#never');
+    expect(q('.lane').textContent).toContain('no recorded mutations for this element');
+    // The Store must not have been mutated just to render this lane.
+    expect(store.elements().length).toBe(0);
+  });
+  it('a selection that is tracked, then removed and pruned, still collapses the lane (distinct from a never-tracked element)', () => {
+    const { store, el, q } = setup();
+    store.push(makeEvent(el, { time: performance.now() }));
+    hud!.select(el);
+    expect(q('.lane').hidden).toBe(false);
+    el.remove();
+    store.tick(performance.now());
+    expect(store.elements().length).toBe(0);
+    hud!.render();
+    // Disconnected + untracked => stale selection => lane collapses (not shown with a fallback label).
+    expect(q('.lane').hidden).toBe(true);
+  });
   it('drag ends itself when a pointermove reports no buttons held, even without a pointerup', () => {
     const { q } = setup();
     const head = q('.head');
