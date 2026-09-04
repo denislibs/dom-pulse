@@ -83,7 +83,8 @@ describe('installWritePatches', () => {
     expect(el.lastElementChild?.className).toBe('be');
 
     // Position matching is ASCII-case-insensitive per the DOM spec.
-    el.insertAdjacentHTML('AfterEnd', '<i class="ae2"></i>');
+    // The DOM accepts mixed-case keywords, but TypeScript's InsertPosition union only lists lowercase forms.
+    el.insertAdjacentHTML('AfterEnd' as InsertPosition, '<i class="ae2"></i>');
     expect(log.last()?.target).toBe(p);
     expect(el.nextElementSibling?.className).toBe('ae2');
   });
