@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DOM Pulse — signal bench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --case:     #262b31;
+    --panel:    #31373f;
+    --panel-hi: #3b424b;
+    --screen:   #14181c;
+    --engrave:  #cfc7b8;
+    --engrave-d:#8e897e;
+    --phosphor: #ffb454;
+    --phosphor-dim: rgba(255,180,84,.28);
+
+    --child:  rgb(34,197,94);
+    --attr:   rgb(59,130,246);
+    --text:   rgb(234,179,8);
+    --hot:    rgb(239,68,68);
+    --shift:  rgb(249,115,22);
+
+    --label: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+    --mono:  "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0; padding: 0 0 520px;
+    font: 400 14.5px/1.65 var(--mono);
+    color: var(--engrave);
+    background: var(--case);
+    background-image: repeating-linear-gradient(180deg, rgba(255,255,255,.014) 0 1px, transparent 1px 3px);
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 26px; }
+
+  .label { font: 600 11px/1 var(--label); letter-spacing: .2em; text-transform: uppercase; color: var(--engrave-d); }
+
+  /* ---- masthead: an instrument faceplate ---- */
+  .plate {
+    margin: 34px 0 0; padding: 22px 26px 24px;
+    background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+    border: 1px solid #1c2127; border-radius: 8px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 12px 30px rgba(0,0,0,.35);
+    position: relative;
+  }
+  .plate::before, .plate::after {
+    content: ""; position: absolute; top: 12px; width: 9px; height: 9px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #6a7280, #2b3138);
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.5);
+  }
+  .plate::before { left: 12px; } .plate::after { right: 12px; }
+
+  h1 {
+    font: 600 clamp(26px, 4.4vw, 40px)/1.06 var(--label);
+    letter-spacing: .02em; text-transform: uppercase;
+    color: #f0eadc; margin: 12px 0 12px; max-width: 20ch;
+  }
+  .lede { margin: 0; max-width: 60ch; color: var(--engrave-d); }
+  .lede b { color: var(--engrave); font-weight: 500; }
+
+  .readouts { display: flex; flex-wrap: wrap; gap: 10px; margin: 22px 0 0; }
+  .readout {
+    background: var(--screen); border: 1px solid #0c0f12; border-radius: 5px;
+    padding: 9px 14px 8px; min-width: 128px;
+    box-shadow: inset 0 2px 8px rgba(0,0,0,.6);
+  }
+  .readout b { display: block; font: 700 22px/1.1 var(--mono); color: var(--phosphor); text-shadow: 0 0 12px var(--phosphor-dim); }
+  .readout span { font: 600 10px/1 var(--label); letter-spacing: .18em; text-transform: uppercase; color: var(--engrave-d); }
+
+  /* ---- sections ---- */
+  h2 { margin: 44px 0 14px; font: 600 11px/1 var(--label); letter-spacing: .22em; text-transform: uppercase; color: var(--engrave-d); }
+  h2::after { content: ""; display: block; height: 1px; background: linear-gradient(90deg, #4a525c, transparent); margin-top: 9px; }
+
+  /* ---- key ---- */
+  .key { display: grid; gap: 9px 26px; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); }
+  .key div { display: flex; align-items: baseline; gap: 11px; }
+  .mark { flex: none; width: 28px; height: 14px; border-radius: 2px; position: relative; top: 3px; }
+  .m-child  { border: 2px solid var(--child); }
+  .m-attr   { border: 2px solid var(--attr); }
+  .m-text   { border: 2px solid var(--text); }
+  .m-hot    { border: 3px solid var(--hot); }
+  .m-reflow { border: 2px dashed var(--attr); }
+  .m-shift  { background: rgba(249,115,22,.3); border: 1px solid var(--shift); }
+  .key b { color: #f0eadc; font-weight: 500; }
+  .key span { color: var(--engrave-d); }
+
+  /* ---- channels ---- */
+  .channels { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .channel {
+    background: var(--panel); border: 1px solid #1c2127; border-radius: 7px; padding: 14px 16px 16px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+  }
+  .channel .ch { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 11px; }
+  .channel button {
+    font: 600 12px/1 var(--label); letter-spacing: .14em; text-transform: uppercase;
+    color: #f0eadc; background: linear-gradient(180deg, #474f59, #383f47);
+    border: 1px solid #1c2127; border-radius: 4px; padding: 9px 14px; cursor: pointer;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.09), 0 1px 2px rgba(0,0,0,.4);
+    transition: filter .12s ease, transform .06s ease;
+  }
+  .channel button:hover { filter: brightness(1.18); }
+  .channel button:active { transform: translateY(1px); box-shadow: inset 0 2px 5px rgba(0,0,0,.5); }
+  .channel button:focus-visible { outline: 2px solid var(--phosphor); outline-offset: 3px; }
+  .lamp { flex: none; width: 9px; height: 9px; border-radius: 50%; background: #22272d; box-shadow: inset 0 0 0 1px #0d1013; }
+  .channel.live .lamp { background: var(--phosphor); box-shadow: 0 0 10px var(--phosphor); }
+  .channel p { margin: 0; color: var(--engrave-d); font-size: 13.5px; line-height: 1.6; }
+  .channel .look { display: block; margin-top: 7px; color: var(--engrave); }
+  .channel .look::before { content: "OUT "; font: 600 10px var(--label); letter-spacing: .16em; color: var(--phosphor); }
+
+  /* ---- reference ---- */
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { text-align: left; vertical-align: top; padding: 8px 18px 8px 0; border-bottom: 1px solid #3a4048; }
+  th { font: 600 11px/1.7 var(--label); letter-spacing: .16em; text-transform: uppercase; color: var(--phosphor); white-space: nowrap; width: 1%; }
+  td { color: var(--engrave-d); }
+  code { color: var(--engrave); background: #1d2228; padding: 1px 5px; border-radius: 3px; }
+
+  /* ---- stage as a screen ---- */
+  #stage {
+    background: var(--screen); border: 1px solid #0c0f12; border-radius: 7px; padding: 20px;
+    box-shadow: inset 0 3px 14px rgba(0,0,0,.6);
+  }
+  #banner { background: #4a3a12; border: 1px solid #7a6222; color: #ffdf9e; padding: 28px; margin-bottom: 14px; border-radius: 4px; }
+  #badge { display: inline-block; padding: 3px 10px; border: 1px solid #4d545d; border-radius: 3px; }
+  #badge.on { background: #16324f; border-color: var(--attr); color: #cfe3ff; }
+  #rows { margin: 16px 0; }
+  .row { height: 13px; background: #232a31; border: 1px solid #2d353d; border-radius: 2px; margin: 3px 0; }
+  #list { margin: 0; padding-left: 22px; max-height: 200px; overflow: auto; color: var(--engrave-d); }
+  #counter { color: var(--phosphor); }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="plate">
+    <p class="label">DOM Pulse · channel monitor</p>
+    <h1>Put the page on the bench</h1>
+    <p class="lede">
+      The instrument is already running — it started itself from the script tag at the bottom of this file,
+      and the panel in the corner is its display. Fire a channel below and watch <b>two places at once</b>:
+      outlines on the elements, and the numbers moving.
+    </p>
+    <div class="readouts">
+      <div class="readout"><b id="r-mut">0</b><span>changes / s</span></div>
+      <div class="readout"><b id="r-nodes">0</b><span>nodes touched</span></div>
+      <div class="readout"><b id="r-since">0</b><span>seconds live</span></div>
+    </div>
+  </header>
+
+  <h2>Signal key</h2>
+  <div class="key">
+    <div><span class="mark m-child"></span><span><b>Green</b> — children added or removed</span></div>
+    <div><span class="mark m-attr"></span><span><b>Blue</b> — an attribute changed</span></div>
+    <div><span class="mark m-text"></span><span><b>Yellow</b> — text changed</span></div>
+    <div><span class="mark m-hot"></span><span><b>Red, thicker</b> — over 20 changes in 5 seconds</span></div>
+    <div><span class="mark m-reflow"></span><span><b>Dashed</b> — reading this element forced a layout</span></div>
+    <div><span class="mark m-shift"></span><span><b>Orange wash</b> — this area visibly jumped</span></div>
+  </div>
+
+  <h2>Channels</h2>
+  <div class="channels">
+    <div class="channel"><div class="ch"><button id="btn-flip">Flip a class, 3s</button><span class="lamp"></span></div>
+      <p>Toggles one class on the badge every 50 ms.
+        <span class="look">a blue outline that turns red after about a second.</span></p></div>
+    <div class="channel"><div class="ch"><button id="btn-text">Tick a counter, 3s</button><span class="lamp"></span></div>
+      <p>Rewrites a text node ten times a second.
+        <span class="look">a yellow outline and a character-level diff in the lane.</span></p></div>
+    <div class="channel"><div class="ch"><button id="btn-mass">Insert 500 nodes</button><span class="lamp"></span></div>
+      <p>Replaces the list with 500 fresh items in one write.
+        <span class="look"><code>nodes</code> passing 500 for a single change.</span></p></div>
+    <div class="channel"><div class="ch"><button id="btn-recreate">Recreate the list</button><span class="lamp"></span></div>
+      <p>Removes every item, then puts identical ones back.
+        <span class="look">the lane marking it <code>↻ recreated</code> — wasted work.</span></p></div>
+    <div class="channel"><div class="ch"><button id="btn-thrash">Force layout 50×</button><span class="lamp"></span></div>
+      <p>Reads each bar's width, then writes it back.
+        <span class="look">dashed outlines, and this handler credited with 50 reflows.</span></p></div>
+    <div class="channel"><div class="ch"><button id="btn-shift">Shift the layout</button><span class="lamp"></span></div>
+      <p>Drops a banner above the content and pushes it down.
+        <span class="look">an orange wash over everything that moved.</span></p></div>
+  </div>
+
+  <h2>Reading the display</h2>
+  <table>
+    <tr><th>Top line</th><td>Changes per second, forced layouts per second, total layout shift, and a 30-second graph.</td></tr>
+    <tr><th>element</th><td>Which element it is. Red text means it is changing faster than the hot threshold.</td></tr>
+    <tr><th>mut/s</th><td>How often it changes, averaged over the last 5 seconds.</td></tr>
+    <tr><th>reflow</th><td>How many times reading this element's layout forced the browser to recalculate.</td></tr>
+    <tr><th>shift</th><td>How much visible movement this element caused.</td></tr>
+    <tr><th>nodes</th><td>How many nodes its changes touched — an <code>innerHTML</code> swap costs far more than a class toggle.</td></tr>
+    <tr><th>Sources</th><td>The files and functions writing to the DOM most. Click one to filter the table.</td></tr>
+  </table>
+
+  <h2>Controls</h2>
+  <table>
+    <tr><th>A row</th><td>Scrolls to that element and rings it in white.</td></tr>
+    <tr><th>Same row again</th><td>Opens its lane: recent changes, each with what changed and who did it.</td></tr>
+    <tr><th>A lane entry</th><td>Expands to the call stack.</td></tr>
+    <tr><th>A heading</th><td>Sorts by that column. Try <code>reflow</code> after forcing layout.</td></tr>
+    <tr><th>Alt + click</th><td>Opens the lane for anything on this page.</td></tr>
+  </table>
+
+  <h2>Stage</h2>
+  <div id="stage">
+    <div id="content">
+      <p>Counter: <span id="counter">0</span> · <span id="badge">badge</span></p>
+      <div id="rows"></div>
+      <ul id="list"></ul>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // Faceplate readouts, and the channel lamp that lights while its scenario runs.
+  (function () {
+    let muts = 0, nodes = 0;
+    const started = Date.now();
+    new MutationObserver(records => {
+      muts += records.length;
+      for (const r of records) nodes += r.addedNodes.length + r.removedNodes.length;
+    }).observe(document.documentElement, { childList: true, attributes: true, characterData: true, subtree: true });
+
+    const set = (id, v) => { document.getElementById(id).textContent = String(v); };
+    let last = 0;
+    setInterval(() => {
+      set('r-mut', muts - last); last = muts;
+      set('r-nodes', nodes);
+      set('r-since', Math.round((Date.now() - started) / 1000));
+    }, 1000);
+
+    for (const channel of document.querySelectorAll('.channel')) {
+      channel.querySelector('button').addEventListener('click', () => {
+        channel.classList.add('live');
+        setTimeout(() => channel.classList.remove('live'), 3000);
+      });
+    }
+  })();
+</script>
+<script src="./scenarios.js"></script>
+<script src="../../dist/dom-pulse.js"></script>
+</body>
+</html>
