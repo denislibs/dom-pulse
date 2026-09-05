@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DOM Pulse — clinical chart</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light;
+    --paper:      #fffdfc;
+    --grid-fine:  #f7dcdc;
+    --grid-bold:  #edb9b9;
+    --ink:        #16283d;
+    --ink-soft:   #5b6b7c;
+    --rule:       #d8c3c3;
+    --trace:      #c2334d;
+
+    --child:  rgb(34,197,94);
+    --attr:   rgb(59,130,246);
+    --text:   rgb(234,179,8);
+    --hot:    rgb(239,68,68);
+    --shift:  rgb(249,115,22);
+
+    --sans: "IBM Plex Sans", system-ui, sans-serif;
+    --cond: "IBM Plex Sans Condensed", "IBM Plex Sans", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 0 0 520px;
+    font: 400 15px/1.6 var(--sans);
+    color: var(--ink);
+    background-color: var(--paper);
+    /* ECG paper: 4px fine grid, 20px bold grid */
+    background-image:
+      linear-gradient(var(--grid-bold) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-bold) 1px, transparent 1px),
+      linear-gradient(var(--grid-fine) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-fine) 1px, transparent 1px);
+    background-size: 20px 20px, 20px 20px, 4px 4px, 4px 4px;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 0 28px; }
+
+  /* ---- hero: the page takes its own pulse ---- */
+  .hero { padding: 56px 0 28px; }
+  .kicker {
+    font: 600 11px/1 var(--cond);
+    letter-spacing: .22em; text-transform: uppercase;
+    color: var(--trace); margin: 0 0 14px;
+  }
+  h1 {
+    font: 600 clamp(30px, 5vw, 46px)/1.05 var(--sans);
+    letter-spacing: -.022em; margin: 0 0 14px; max-width: 17ch;
+  }
+  .lede { margin: 0; max-width: 56ch; color: var(--ink-soft); font-size: 16.5px; }
+  .lede b { color: var(--ink); font-weight: 500; }
+
+  .trace-strip {
+    margin: 30px 0 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+    padding: 12px 0 8px; display: flex; align-items: flex-end; gap: 20px;
+  }
+  #pulse { display: block; width: 100%; height: 74px; }
+  .trace-read {
+    font: 500 12px/1.35 var(--mono); color: var(--ink-soft);
+    white-space: nowrap; text-align: right; padding-bottom: 4px;
+  }
+  .trace-read b { display: block; font: 500 26px/1 var(--mono); color: var(--trace); }
+
+  /* ---- sections ---- */
+  h2 {
+    font: 600 11px/1 var(--cond); letter-spacing: .22em; text-transform: uppercase;
+    color: var(--ink-soft); margin: 52px 0 0; padding-bottom: 9px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .after-rule { margin-top: 20px; }
+
+  /* ---- legend as a chart key ---- */
+  .key { display: grid; gap: 0; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .key div {
+    display: flex; align-items: baseline; gap: 12px;
+    padding: 11px 14px 11px 0; border-bottom: 1px dotted var(--rule);
+  }
+  .mark { flex: none; width: 30px; height: 15px; border-radius: 2px; position: relative; top: 3px; }
+  .m-child  { border: 2px solid var(--child); }
+  .m-attr   { border: 2px solid var(--attr); }
+  .m-text   { border: 2px solid var(--text); }
+  .m-hot    { border: 3px solid var(--hot); }
+  .m-reflow { border: 2px dashed var(--attr); }
+  .m-shift  { background: rgba(249,115,22,.28); border: 1px solid var(--shift); }
+  .key b { font-weight: 600; }
+  .key span { color: var(--ink-soft); }
+
+  /* ---- scenarios ---- */
+  .runs { display: grid; gap: 22px 30px; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); }
+  .run { padding-top: 4px; }
+  .run button {
+    font: 500 14px/1 var(--sans); color: var(--paper); background: var(--ink);
+    border: 0; border-radius: 3px; padding: 10px 16px; cursor: pointer;
+    transition: background .12s ease;
+  }
+  .run button:hover { background: var(--trace); }
+  .run button:focus-visible { outline: 2px solid var(--trace); outline-offset: 3px; }
+  .run p { margin: 12px 0 0; color: var(--ink-soft); font-size: 14.5px; }
+  .run .look { display: block; margin-top: 7px; color: var(--ink); }
+  .run .look::before {
+    content: "→ "; color: var(--trace); font-weight: 600;
+  }
+
+  /* ---- reference tables ---- */
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 18px 9px 0; border-bottom: 1px dotted var(--rule); }
+  th { font: 500 13px/1.5 var(--mono); color: var(--trace); white-space: nowrap; width: 1%; }
+  td { color: var(--ink-soft); }
+  code { font: 400 13px var(--mono); color: var(--ink); background: rgba(22,40,61,.06); padding: 1px 5px; border-radius: 3px; }
+
+  /* ---- stage ---- */
+  #stage { background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; padding: 20px; }
+  #banner { background: #ffe9a8; border: 1px solid #e8c765; padding: 30px; margin-bottom: 14px; border-radius: 3px; }
+  #badge { display: inline-block; padding: 3px 10px; border: 1px solid var(--ink-soft); border-radius: 3px; font: 500 14px var(--mono); }
+  #badge.on { background: #cfe3ff; border-color: var(--attr); }
+  #rows { margin: 16px 0; }
+  .row { height: 14px; background: #e6ecf2; border-radius: 2px; margin: 3px 0; }
+  #list { margin: 0; padding-left: 22px; max-height: 200px; overflow: auto; font: 400 14px var(--mono); }
+  #list li { padding: 1px 0; }
+  #counter { font: 500 15px var(--mono); }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <p class="kicker">Live on this page</p>
+    <h1>Every page has a pulse. This one is showing you its own.</h1>
+    <p class="lede">
+      DOM Pulse started itself from the script tag at the bottom of this file. The trace below is
+      this page's own rate of change, beat by beat. Press a button and watch <b>two places at once</b>:
+      outlines flashing on the elements, and the panel in the corner keeping score.
+    </p>
+
+    <div class="trace-strip">
+      <canvas id="pulse" width="1600" height="148" aria-label="Live trace of this page's DOM changes per second"></canvas>
+      <div class="trace-read"><b id="bpm">0</b>changes<br>per second</div>
+    </div>
+  </header>
+
+  <h2>The chart key</h2>
+  <div class="key after-rule">
+    <div><span class="mark m-child"></span><span><b>Green</b> — children added or removed</span></div>
+    <div><span class="mark m-attr"></span><span><b>Blue</b> — an attribute changed</span></div>
+    <div><span class="mark m-text"></span><span><b>Yellow</b> — text changed</span></div>
+    <div><span class="mark m-hot"></span><span><b>Red, thicker</b> — over 20 changes in 5 seconds</span></div>
+    <div><span class="mark m-reflow"></span><span><b>Dashed</b> — reading this element forced a layout</span></div>
+    <div><span class="mark m-shift"></span><span><b>Orange wash</b> — this area visibly jumped</span></div>
+  </div>
+
+  <h2>Run one at a time</h2>
+  <div class="runs after-rule">
+    <div class="run">
+      <button id="btn-flip">Flip a class, 3s</button>
+      <p>Toggles one class on the badge every 50 ms.
+        <span class="look">a blue outline that turns red after about a second.</span></p>
+    </div>
+    <div class="run">
+      <button id="btn-text">Tick a counter, 3s</button>
+      <p>Rewrites a text node ten times a second.
+        <span class="look">a yellow outline, and a character-level diff in the element's lane.</span></p>
+    </div>
+    <div class="run">
+      <button id="btn-mass">Insert 500 nodes</button>
+      <p>Replaces the list with 500 fresh items in one write.
+        <span class="look"><code>nodes</code> passing 500 for a single change.</span></p>
+    </div>
+    <div class="run">
+      <button id="btn-recreate">Recreate the list</button>
+      <p>Removes every item, then puts identical ones back.
+        <span class="look">the lane marking it <code>↻ recreated</code> — wasted work.</span></p>
+    </div>
+    <div class="run">
+      <button id="btn-thrash">Force layout 50×</button>
+      <p>Reads each bar's width, then writes it back.
+        <span class="look">dashed outlines, and this handler credited with 50 reflows.</span></p>
+    </div>
+    <div class="run">
+      <button id="btn-shift">Shift the layout</button>
+      <p>Drops a banner above the content and pushes it down.
+        <span class="look">an orange wash over everything that moved.</span></p>
+    </div>
+  </div>
+
+  <h2>Reading the panel</h2>
+  <table class="after-rule">
+    <tr><th>Top line</th><td>Changes per second, forced layouts per second, total layout shift, and a 30-second graph.</td></tr>
+    <tr><th>element</th><td>Which element it is. Red text means it is changing faster than the hot threshold.</td></tr>
+    <tr><th>mut/s</th><td>How often it changes, averaged over the last 5 seconds.</td></tr>
+    <tr><th>reflow</th><td>How many times reading this element's layout forced the browser to recalculate.</td></tr>
+    <tr><th>shift</th><td>How much visible movement this element caused.</td></tr>
+    <tr><th>nodes</th><td>How many nodes its changes touched — an <code>innerHTML</code> swap costs far more than a class toggle.</td></tr>
+    <tr><th>total</th><td>Total changes since the counters were reset.</td></tr>
+    <tr><th>Sources</th><td>The files and functions writing to the DOM most. Click one to filter the table.</td></tr>
+  </table>
+
+  <h2>What is clickable</h2>
+  <table class="after-rule">
+    <tr><th>A row</th><td>Scrolls to that element and rings it in white.</td></tr>
+    <tr><th>Same row again</th><td>Opens its lane: recent changes, each with what changed and who did it.</td></tr>
+    <tr><th>A lane entry</th><td>Expands to the call stack.</td></tr>
+    <tr><th>A heading</th><td>Sorts by that column. Try <code>reflow</code> after forcing layout.</td></tr>
+    <tr><th>Alt + click</th><td>Opens the lane for anything on this page.</td></tr>
+  </table>
+
+  <h2>Stage</h2>
+  <div id="stage" class="after-rule">
+    <div id="content">
+      <p>Counter: <span id="counter">0</span> · <span id="badge">badge</span></p>
+      <div id="rows"></div>
+      <ul id="list"></ul>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // The hero trace: this page watching its own heartbeat, drawn like an ECG strip.
+  (function () {
+    const canvas = document.getElementById('pulse');
+    const ctx = canvas.getContext('2d');
+    const readout = document.getElementById('bpm');
+    const SAMPLES = 200;
+    const history = new Array(SAMPLES).fill(0);
+    let sinceTick = 0;
+
+    new MutationObserver(records => { sinceTick += records.length; })
+      .observe(document.documentElement, { childList: true, attributes: true, characterData: true, subtree: true });
+
+    function draw() {
+      const w = canvas.width, h = canvas.height, pad = 8;
+      ctx.clearRect(0, 0, w, h);
+      const peak = Math.max(12, ...history);
+      const step = w / (SAMPLES - 1);
+      ctx.beginPath();
+      history.forEach((v, i) => {
+        const x = i * step;
+        const y = h - pad - (v / peak) * (h - pad * 2);
+        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      });
+      ctx.strokeStyle = '#c2334d';
+      ctx.lineWidth = 2.5;
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+    }
+
+    setInterval(() => {
+      history.push(sinceTick);
+      history.shift();
+      readout.textContent = String(sinceTick);
+      sinceTick = 0;
+      draw();
+    }, 250);
+    draw();
+  })();
+</script>
+<script src="./scenarios.js"></script>
+<script src="../../dist/dom-pulse.js"></script>
+</body>
+</html>

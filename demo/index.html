@@ -4,46 +4,175 @@
 <meta charset="utf-8">
 <title>DOM Pulse demo</title>
 <style>
-  body { font: 14px system-ui, sans-serif; margin: 0; padding: 24px; }
-  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
-  button { padding: 6px 12px; }
-  #banner { background: #fde68a; padding: 40px; margin-bottom: 16px; }
-  #badge { display: inline-block; padding: 4px 8px; border: 1px solid #999; }
-  #badge.on { background: #bfdbfe; }
-  #list li { padding: 2px 6px; border-bottom: 1px solid #eee; }
-  .row { height: 18px; background: #e5e7eb; margin: 2px 0; }
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    margin: 0; padding: 32px 32px 480px; max-width: 940px;
+    color: #1f2937; background: #fff;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .lede { color: #4b5563; margin: 0 0 24px; max-width: 62ch; }
+  .lede b { color: #111827; }
+
+  h2 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase;
+       color: #6b7280; margin: 32px 0 12px; font-weight: 600; }
+
+  .legend { display: grid; gap: 8px 20px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; background: #fafafa; }
+  .legend div { display: flex; align-items: baseline; gap: 8px; }
+  .swatch { width: 26px; height: 14px; border-radius: 3px; flex: none; position: relative; top: 2px; }
+  .sw-child { border: 2px solid rgb(34,197,94); }
+  .sw-attr  { border: 2px solid rgb(59,130,246); }
+  .sw-text  { border: 2px solid rgb(234,179,8); }
+  .sw-hot   { border: 3px solid rgb(239,68,68); }
+  .sw-reflow{ border: 2px dashed rgb(59,130,246); }
+  .sw-shift { background: rgba(249,115,22,.3); border: 1px solid rgba(249,115,22,.6); }
+
+  .cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; }
+  .card button { font: inherit; font-weight: 600; padding: 7px 14px; border-radius: 7px;
+                 border: 1px solid #d1d5db; background: #fff; cursor: pointer; }
+  .card button:hover { background: #f3f4f6; }
+  .card p { margin: 10px 0 0; color: #4b5563; font-size: 14px; }
+  .card .look { display: block; margin-top: 6px; color: #111827; }
+  .card .look::before { content: "Watch for: "; color: #6b7280; }
+
+  table.cols { border-collapse: collapse; font-size: 14px; }
+  table.cols th, table.cols td { text-align: left; padding: 5px 14px 5px 0; vertical-align: top; }
+  table.cols th { color: #6b7280; font-weight: 600; white-space: nowrap; }
+  code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace;
+         background: #f3f4f6; padding: 1px 5px; border-radius: 4px; }
+
+  #stage { border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; }
+  #banner { background: #fde68a; padding: 36px; margin-bottom: 12px; border-radius: 6px; }
+  #badge { display: inline-block; padding: 3px 9px; border: 1px solid #9ca3af; border-radius: 5px; }
+  #badge.on { background: #bfdbfe; border-color: #60a5fa; }
+  #rows { margin: 12px 0; }
+  .row { height: 16px; background: #e5e7eb; border-radius: 3px; margin: 3px 0; }
+  #list { margin: 0; padding-left: 20px; max-height: 190px; overflow: auto; }
+  #list li { padding: 1px 0; }
 </style>
 </head>
 <body>
+
 <h1>DOM Pulse demo</h1>
-<div class="toolbar">
-  <button id="btn-flip">Flip class 3 s</button>
-  <button id="btn-text">Text tick 3 s</button>
-  <button id="btn-mass">Mass insert 500</button>
-  <button id="btn-recreate">Recreate list</button>
-  <button id="btn-thrash">Layout thrash</button>
-  <button id="btn-shift">Layout shift</button>
+<p class="lede">
+  DOM Pulse is already running on this page — it started itself from the script tag at the bottom.
+  The panel in the bottom-right corner is its HUD. Press a button below and watch
+  <b>two places at once</b>: outlines flashing on the page, and numbers moving in the panel.
+</p>
+
+<h2>What the outlines mean</h2>
+<div class="legend">
+  <div><span class="swatch sw-child"></span><span><b>Green</b> — children were added or removed</span></div>
+  <div><span class="swatch sw-attr"></span><span><b>Blue</b> — an attribute changed</span></div>
+  <div><span class="swatch sw-text"></span><span><b>Yellow</b> — text changed</span></div>
+  <div><span class="swatch sw-hot"></span><span><b>Red and thicker</b> — hot: over 20 changes in 5 seconds</span></div>
+  <div><span class="swatch sw-reflow"></span><span><b>Dashed</b> — this element's layout was read, forcing the browser to recalculate</span></div>
+  <div><span class="swatch sw-shift"></span><span><b>Orange fill</b> — this area visibly jumped</span></div>
 </div>
-<div id="content">
-  <p>Counter: <span id="counter">0</span> · <span id="badge">badge</span></p>
-  <div id="rows"></div>
-  <ul id="list"></ul>
+
+<h2>Try these, one at a time</h2>
+<div class="cards">
+  <div class="card">
+    <button id="btn-flip">Flip a class, 3s</button>
+    <p>Toggles one class on the badge every 50 ms.
+      <span class="look">a blue outline on the badge that turns red after about a second, and the badge climbing to the top of the table.</span></p>
+  </div>
+  <div class="card">
+    <button id="btn-text">Tick a counter, 3s</button>
+    <p>Rewrites a text node ten times a second.
+      <span class="look">a yellow outline, and in the element's lane a diff like <code>4<del>1</del><ins>2</ins></code>.</span></p>
+  </div>
+  <div class="card">
+    <button id="btn-mass">Insert 500 nodes</button>
+    <p>Replaces the list with 500 fresh items in one write.
+      <span class="look">a green outline around the list and <code>nodes</code> jumping past 500 for a single mutation.</span></p>
+  </div>
+  <div class="card">
+    <button id="btn-recreate">Recreate the list</button>
+    <p>Removes every item, then adds identical ones back — wasted work a framework might do.
+      <span class="look">the lane marking the change <code>↻ recreated</code>.</span></p>
+  </div>
+  <div class="card">
+    <button id="btn-thrash">Force layout 50×</button>
+    <p>The classic thrashing loop: read each bar's width, then write it back.
+      <span class="look">dashed outlines, <code>reflow/s</code> jumping to 50, and this button's handler credited with 50 reflows in Sources.</span></p>
+  </div>
+  <div class="card">
+    <button id="btn-shift">Shift the layout</button>
+    <p>Drops a banner in above the content, pushing everything down.
+      <span class="look">an orange wash over the area that moved.</span></p>
+  </div>
 </div>
+
+<h2>Reading the panel</h2>
+<table class="cols">
+  <tr><th>Top line</th><td>Changes per second, forced layouts per second, total layout shift, and a 30-second graph.</td></tr>
+  <tr><th>element</th><td>Which element it is. Red text means it is changing faster than the hot threshold.</td></tr>
+  <tr><th>mut/s</th><td>How often it changes, averaged over the last 5 seconds.</td></tr>
+  <tr><th>reflow</th><td>How many times reading this element's layout forced the browser to recalculate.</td></tr>
+  <tr><th>shift</th><td>How much visible layout movement this element caused.</td></tr>
+  <tr><th>nodes</th><td>How many nodes its changes touched in total — an <code>innerHTML</code> swap costs far more than a class toggle.</td></tr>
+  <tr><th>total</th><td>Total changes since the counters were reset.</td></tr>
+  <tr><th>Sources</th><td>The files and functions writing to the DOM most. Click one to filter the table to it.</td></tr>
+</table>
+
+<h2>Things to click in the panel</h2>
+<table class="cols">
+  <tr><th>A table row</th><td>Scrolls to that element and rings it in white.</td></tr>
+  <tr><th>The same row again</th><td>Opens its lane: the recent changes, each with what changed and who did it.</td></tr>
+  <tr><th>A lane entry</th><td>Expands it to show the call stack.</td></tr>
+  <tr><th>A column heading</th><td>Sorts by that column. Try <code>reflow</code> after the thrash button.</td></tr>
+  <tr><th>Alt + click anything on this page</th><td>Opens that element's lane directly.</td></tr>
+  <tr><th>⏸ ↺ ⚙ –</th><td>Pause, reset the counters, filters, and collapse to a badge. Drag the title bar to move the panel.</td></tr>
+</table>
+
+<h2>Stage</h2>
+<div id="stage">
+  <div id="content">
+    <p>Counter: <span id="counter">0</span> · <span id="badge">badge</span></p>
+    <div id="rows"></div>
+    <ul id="list"></ul>
+  </div>
+</div>
+
 <script>
   const $ = s => document.querySelector(s);
   const list = $('#list'), rows = $('#rows');
-  for (let i = 0; i < 50; i++) { const r = document.createElement('div'); r.className = 'row'; r.style.width = (100 + i * 4) + 'px'; rows.appendChild(r); }
+  for (let i = 0; i < 30; i++) {
+    const r = document.createElement('div');
+    r.className = 'row';
+    r.style.setProperty('width', (120 + i * 12) + 'px');
+    rows.appendChild(r);
+  }
   const fill = n => { list.innerHTML = Array.from({ length: n }, (_, i) => `<li class="item">item ${i}</li>`).join(''); };
   fill(20);
   const burst = (fn, ms, total) => { const id = setInterval(fn, ms); setTimeout(() => clearInterval(id), total); };
 
-  $('#btn-flip').onclick = () => burst(() => $('#badge').classList.toggle('on'), 50, 3000);
+  $('#btn-flip').onclick = function flipClass() { burst(() => $('#badge').classList.toggle('on'), 50, 3000); };
   let n = 0;
-  $('#btn-text').onclick = () => burst(() => { $('#counter').firstChild.data = String(++n); }, 100, 3000);
-  $('#btn-mass').onclick = () => fill(500);
-  $('#btn-recreate').onclick = () => { const items = [...list.children]; items.forEach(li => li.remove()); items.forEach(li => list.appendChild(li.cloneNode(true))); };
-  $('#btn-thrash').onclick = () => { for (const r of rows.children) r.style.width = (r.offsetWidth + 1) + 'px'; };
-  $('#btn-shift').onclick = () => { const b = document.createElement('div'); b.id = 'banner'; b.textContent = 'banner'; $('#content').prepend(b); setTimeout(() => b.remove(), 1000); };
+  $('#btn-text').onclick = function tickCounter() { burst(() => { $('#counter').firstChild.data = String(++n); }, 100, 3000); };
+  $('#btn-mass').onclick = function massInsert() { fill(500); };
+  $('#btn-recreate').onclick = function recreateList() {
+    const items = [...list.children];
+    items.forEach(li => li.remove());
+    items.forEach(li => list.appendChild(li.cloneNode(true)));
+  };
+  // Reads layout, then writes it back — the textbook thrashing loop.
+  // setProperty is used rather than `style.width =` because Chrome exposes named
+  // style properties per instance, so those writes carry no attributable source.
+  $('#btn-thrash').onclick = function forceLayout() {
+    for (const r of rows.children) r.style.setProperty('width', (r.offsetWidth + 1) + 'px');
+  };
+  $('#btn-shift').onclick = function shiftLayout() {
+    const b = document.createElement('div');
+    b.id = 'banner';
+    b.textContent = 'This banner pushed everything below it down.';
+    $('#content').prepend(b);
+    setTimeout(() => b.remove(), 1500);
+  };
 </script>
 <script src="../dist/dom-pulse.js"></script>
 </body>
