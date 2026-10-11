@@ -3,7 +3,7 @@ import { withInternal } from '../internal';
 import { describeNode } from '../describe';
 import { shortFile } from '../stack';
 import { guarded } from '../warn';
-import { STYLES } from './styles';
+import { STYLES, SPARK_COLOR } from './styles';
 import { renderDiff, escapeHtml } from './render-diff';
 import { drawSparkline } from './sparkline';
 import type { ElementStats, MutationKind, PulseEvent, SortKey, StackFrame } from '../types';
@@ -118,7 +118,7 @@ export class Hud {
       this.el.stat.mut.textContent = String(rates.mutations);
       this.el.stat.reflow.textContent = String(rates.reflows);
       this.el.stat.shift.textContent = this.store.totalShift.toFixed(3);
-      drawSparkline(this.el.spark, this.store.history);
+      drawSparkline(this.el.spark, this.store.history, SPARK_COLOR);
       if (s.collapsed) return;
 
       this.rows = this.store.topElements(s.topN, s.sortKey, now, st =>
