@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DOM Pulse — specimen sheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=Space+Mono:wght@400;700&family=Spectral:ital,wght@0,300;0,600;1,300;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light;
+    --paper:  #eef1f3;
+    --sheet:  #ffffff;
+    --ink:    #101a22;
+    --ink-2:  #5d6b76;
+    --rule:   #c6ced5;
+    --accent: #8c2f39;
+
+    --child:  rgb(34,197,94);
+    --attr:   rgb(59,130,246);
+    --text:   rgb(234,179,8);
+    --hot:    rgb(239,68,68);
+    --shift:  rgb(249,115,22);
+
+    --serif: "Spectral", Georgia, "Times New Roman", serif;
+    --sans:  "Archivo", system-ui, -apple-system, sans-serif;
+    --mono:  "Space Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0; padding: 0 0 520px;
+    font: 400 15px/1.65 var(--sans);
+    color: var(--ink); background: var(--paper);
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 30px; }
+
+  /* ---- plate heading ---- */
+  .masthead { padding: 60px 0 30px; border-bottom: 1px solid var(--rule); }
+  .plate-no {
+    font: 400 12px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 16px;
+  }
+  h1 {
+    font: 300 clamp(34px, 5.6vw, 56px)/1.04 var(--serif);
+    letter-spacing: -.012em; margin: 0 0 18px; max-width: 18ch;
+  }
+  h1 em { font-style: italic; font-weight: 400; }
+  .lede { margin: 0; max-width: 58ch; font: 300 18px/1.62 var(--serif); color: var(--ink-2); }
+  .lede b { color: var(--ink); font-weight: 600; }
+
+  h2 {
+    font: 400 12px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase;
+    color: var(--accent); margin: 54px 0 20px;
+  }
+
+  /* ---- annotated plate: labels with leader lines to the live specimen ---- */
+  .plate { position: relative; display: grid; grid-template-columns: 260px 1fr; gap: 0 74px; align-items: start; }
+  #leaders { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+  .notes { display: flex; flex-direction: column; gap: 20px; }
+  .note { text-align: right; }
+  .note b { display: block; font: 400 15px/1.3 var(--serif); font-style: italic; }
+  .note span { display: block; font-size: 13px; line-height: 1.5; color: var(--ink-2); margin-top: 2px; }
+  .note .swatch {
+    display: inline-block; width: 26px; height: 13px; border-radius: 2px; margin-left: 8px;
+    position: relative; top: 2px;
+  }
+  .s-child  { border: 2px solid var(--child); }
+  .s-attr   { border: 2px solid var(--attr); }
+  .s-text   { border: 2px solid var(--text); }
+  .s-hot    { border: 3px solid var(--hot); }
+  .s-reflow { border: 2px dashed var(--attr); }
+  .s-shift  { background: rgba(249,115,22,.28); border: 1px solid var(--shift); }
+
+  #stage {
+    background: var(--sheet); border: 1px solid var(--rule); padding: 26px;
+    box-shadow: 0 1px 0 rgba(16,26,34,.04), 0 18px 40px -28px rgba(16,26,34,.5);
+  }
+  #banner { background: #fdf0c8; border: 1px solid #e2c874; padding: 30px; margin-bottom: 16px; }
+  #badge { display: inline-block; padding: 3px 10px; border: 1px solid var(--ink-2); font: 400 14px var(--mono); }
+  #badge.on { background: #d8e7ff; border-color: var(--attr); }
+  #rows { margin: 18px 0; }
+  .row { height: 13px; background: #e3e8ec; margin: 4px 0; }
+  #list { margin: 0; padding-left: 22px; max-height: 190px; overflow: auto; font: 400 13.5px var(--mono); }
+  #counter { font: 400 15px var(--mono); }
+
+  /* ---- procedures ---- */
+  .procs { display: grid; gap: 0; }
+  .proc {
+    display: grid; grid-template-columns: 200px 1fr; gap: 0 34px; align-items: baseline;
+    padding: 18px 0; border-bottom: 1px solid var(--rule);
+  }
+  .proc:first-child { border-top: 1px solid var(--rule); }
+  .proc button {
+    width: 100%; font: 500 14px/1 var(--sans); color: var(--ink); background: transparent;
+    border: 1px solid var(--ink); padding: 10px 14px; cursor: pointer; text-align: left;
+    transition: background .14s ease, color .14s ease;
+  }
+  .proc button:hover { background: var(--ink); color: var(--sheet); }
+  .proc button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .proc p { margin: 0; color: var(--ink-2); font-size: 14.5px; }
+  .proc .look { display: block; margin-top: 6px; color: var(--ink); font: 300 15px/1.5 var(--serif); font-style: italic; }
+
+  /* ---- reference ---- */
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 20px 9px 0; border-bottom: 1px solid var(--rule); }
+  th { font: 400 13px/1.6 var(--mono); color: var(--accent); white-space: nowrap; width: 1%; }
+  td { color: var(--ink-2); }
+  code { font: 400 13px var(--mono); color: var(--ink); background: rgba(16,26,34,.06); padding: 1px 5px; }
+
+  @media (max-width: 880px) {
+    .plate { grid-template-columns: 1fr; gap: 26px; }
+    #leaders { display: none; }
+    .note { text-align: left; }
+    .proc { grid-template-columns: 1fr; gap: 12px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="plate-no">Plate I · the page under observation</p>
+    <h1>A page, <em>annotated while it changes</em></h1>
+    <p class="lede">
+      DOM Pulse is already running here — it started itself from the script tag at the bottom of this file.
+      The labels below point at the specimen on the right. Run a procedure and watch <b>two places at once</b>:
+      outlines appearing on the elements, and the panel in the corner keeping score.
+    </p>
+  </header>
+
+  <h2>Plate I — the marks and what they mean</h2>
+  <div class="plate">
+    <svg id="leaders" aria-hidden="true"></svg>
+
+    <div class="notes">
+      <div class="note" data-target="#list"><b>Children changed<span class="swatch s-child"></span></b><span>Green outline. Nodes added or removed.</span></div>
+      <div class="note" data-target="#badge"><b>Attribute changed<span class="swatch s-attr"></span></b><span>Blue outline. A class or any attribute.</span></div>
+      <div class="note" data-target="#counter"><b>Text changed<span class="swatch s-text"></span></b><span>Yellow outline. The characters themselves.</span></div>
+      <div class="note" data-target="#badge"><b>Running hot<span class="swatch s-hot"></span></b><span>Red and thicker. Over 20 changes in 5 seconds.</span></div>
+      <div class="note" data-target="#rows"><b>Forced layout<span class="swatch s-reflow"></span></b><span>Dashed. Reading this made the browser recalculate.</span></div>
+      <div class="note" data-target="#content"><b>Layout shifted<span class="swatch s-shift"></span></b><span>Orange wash. This area visibly jumped.</span></div>
+    </div>
+
+    <div id="stage">
+      <div id="content">
+        <p>Counter: <span id="counter">0</span> · <span id="badge">badge</span></p>
+        <div id="rows"></div>
+        <ul id="list"></ul>
+      </div>
+    </div>
+  </div>
+
+  <h2>Procedures</h2>
+  <div class="procs">
+    <div class="proc"><button id="btn-flip">Flip a class, 3s</button>
+      <p>Toggles one class on the badge every 50 ms.
+        <span class="look">A blue outline that turns red after about a second.</span></p></div>
+    <div class="proc"><button id="btn-text">Tick a counter, 3s</button>
+      <p>Rewrites a text node ten times a second.
+        <span class="look">A yellow outline, and a character-level diff in the element's lane.</span></p></div>
+    <div class="proc"><button id="btn-mass">Insert 500 nodes</button>
+      <p>Replaces the list with 500 fresh items in one write.
+        <span class="look">The <code>nodes</code> column passing 500 for a single change.</span></p></div>
+    <div class="proc"><button id="btn-recreate">Recreate the list</button>
+      <p>Removes every item, then puts identical ones back.
+        <span class="look">The lane marking it <code>↻ recreated</code> — work that changed nothing.</span></p></div>
+    <div class="proc"><button id="btn-thrash">Force layout 50×</button>
+      <p>Reads each bar's width, then writes it back.
+        <span class="look">Dashed outlines, and this handler credited with 50 reflows.</span></p></div>
+    <div class="proc"><button id="btn-shift">Shift the layout</button>
+      <p>Drops a banner above the content and pushes it down.
+        <span class="look">An orange wash over everything that moved.</span></p></div>
+  </div>
+
+  <h2>Reading the panel</h2>
+  <table>
+    <tr><th>Top line</th><td>Changes per second, forced layouts per second, total layout shift, and a 30-second graph.</td></tr>
+    <tr><th>element</th><td>Which element it is. Red text means it is changing faster than the hot threshold.</td></tr>
+    <tr><th>mut/s</th><td>How often it changes, averaged over the last 5 seconds.</td></tr>
+    <tr><th>reflow</th><td>How many times reading this element's layout forced the browser to recalculate.</td></tr>
+    <tr><th>shift</th><td>How much visible movement this element caused.</td></tr>
+    <tr><th>nodes</th><td>How many nodes its changes touched — an <code>innerHTML</code> swap costs far more than a class toggle.</td></tr>
+    <tr><th>Sources</th><td>The files and functions writing to the DOM most. Click one to filter the table.</td></tr>
+  </table>
+
+  <h2>What is clickable</h2>
+  <table>
+    <tr><th>A row</th><td>Scrolls to that element and rings it in white.</td></tr>
+    <tr><th>Same row again</th><td>Opens its lane: recent changes, each with what changed and who did it.</td></tr>
+    <tr><th>A lane entry</th><td>Expands to the call stack.</td></tr>
+    <tr><th>A heading</th><td>Sorts by that column. Try <code>reflow</code> after forcing layout.</td></tr>
+    <tr><th>Alt + click</th><td>Opens the lane for anything on this page.</td></tr>
+  </table>
+
+</div>
+
+<script>
+  // Leader lines: each annotation is tied to the element it describes, the way a
+  // plate label is tied to the part it names.
+  //
+  // The lines are built once and then only have their geometry attributes rewritten,
+  // and only when a value actually changes. A demo for a DOM-mutation monitor must not
+  // be a source of DOM mutations itself — an earlier version rebuilt this SVG on every
+  // stage resize and promptly showed up as the busiest element in its own panel.
+  (function () {
+    const svg = document.getElementById('leaders');
+    const plate = svg.parentElement;
+    const NS = 'http://www.w3.org/2000/svg';
+
+    const leaders = [...document.querySelectorAll('.note')].map(note => {
+      const path = document.createElementNS(NS, 'path');
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', '#8c2f39');
+      path.setAttribute('stroke-width', '1');
+      path.setAttribute('opacity', '.45');
+      const dot = document.createElementNS(NS, 'circle');
+      dot.setAttribute('r', '2.5');
+      dot.setAttribute('fill', '#8c2f39');
+      svg.append(path, dot);
+      return { note, path, dot, target: document.querySelector(note.dataset.target), d: '', cx: '', cy: '' };
+    });
+
+    // Only writes when the value differs, so an unchanged layout costs nothing.
+    const set = (el, name, value) => { if (el.getAttribute(name) !== value) el.setAttribute(name, value); };
+
+    let queued = false;
+    function layout() {
+      queued = false;
+      if (getComputedStyle(svg).display === 'none') return;
+      const base = plate.getBoundingClientRect();
+      set(svg, 'viewBox', `0 0 ${Math.round(base.width)} ${Math.round(base.height)}`);
+
+      for (const l of leaders) {
+        if (!l.target) continue;
+        const n = l.note.getBoundingClientRect(), t = l.target.getBoundingClientRect();
+        const x1 = Math.round(n.right - base.left + 8), y1 = Math.round(n.top - base.top + 11);
+        const x2 = Math.round(t.left - base.left - 9), y2 = Math.round(t.top - base.top + Math.min(t.height / 2, 14));
+        const mid = Math.round(x1 + (x2 - x1) * 0.55);
+        set(l.path, 'd', `M ${x1} ${y1} H ${mid} V ${y2} H ${x2}`);
+        set(l.dot, 'cx', String(x2));
+        set(l.dot, 'cy', String(y2));
+      }
+    }
+    const schedule = () => { if (!queued) { queued = true; requestAnimationFrame(layout); } };
+
+    addEventListener('resize', schedule);
+    // Watch only the label column: it is the half of the plate that never changes
+    // while a scenario runs, so scenarios cannot drive a redraw.
+    new ResizeObserver(schedule).observe(document.querySelector('.notes'));
+    if (document.fonts) document.fonts.ready.then(schedule);
+    layout();
+  })();
+</script>
+<script src="./scenarios.js"></script>
+<script src="../../dist/dom-pulse.js"></script>
+</body>
+</html>

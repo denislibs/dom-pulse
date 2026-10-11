@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DOM Pulse — panel design options</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 32px 460px;
+    font: 15px/1.6 system-ui, -apple-system, sans-serif;
+    color: #101a22; background: #eef1f3;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 8px; letter-spacing: -.02em; }
+  .lede { margin: 0 0 28px; color: #5d6b76; max-width: 60ch; }
+  h2 { font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: #5d6b76; margin: 32px 0 12px; }
+  .stage { background: #fff; border: 1px solid #c6ced5; border-radius: 8px; padding: 22px; }
+  #banner { background: #fdf0c8; border: 1px solid #e2c874; padding: 26px; margin-bottom: 14px; border-radius: 4px; }
+  #badge { display: inline-block; padding: 3px 10px; border: 1px solid #5d6b76; border-radius: 4px; font: 14px ui-monospace, Menlo, monospace; }
+  #badge.on { background: #d8e7ff; border-color: #3b82f6; }
+  #rows { margin: 16px 0; }
+  .row { height: 13px; background: #e3e8ec; border-radius: 2px; margin: 4px 0; }
+  #list { margin: 0; padding-left: 22px; max-height: 170px; overflow: auto; font: 13.5px ui-monospace, Menlo, monospace; }
+  .runs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+  .runs button {
+    font: 500 14px/1 system-ui, sans-serif; color: #101a22; background: #fff;
+    border: 1px solid #101a22; border-radius: 5px; padding: 9px 13px; cursor: pointer;
+  }
+  .runs button:hover { background: #101a22; color: #fff; }
+
+  /* the switcher is excluded from DOM Pulse so it does not pollute the readings */
+  #theme-switch {
+    position: fixed; left: 20px; bottom: 20px; z-index: 2147483000;
+    display: flex; gap: 6px; padding: 8px; border-radius: 10px;
+    background: rgba(255,255,255,.92); border: 1px solid #c6ced5;
+    box-shadow: 0 10px 30px -12px rgba(16,26,34,.5); backdrop-filter: blur(8px);
+  }
+  #theme-switch button {
+    font: 500 13px/1 system-ui, sans-serif; color: #101a22; background: transparent;
+    border: 1px solid transparent; border-radius: 6px; padding: 8px 12px; cursor: pointer;
+  }
+  #theme-switch button:hover { background: #eef1f3; }
+  #theme-switch button[aria-pressed="true"] { background: #101a22; color: #fff; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Other looks for the panel</h1>
+  <p class="lede">
+    The shipped panel, and two directions it could have taken instead. Same markup, different stylesheets.
+    Switch with the buttons in the bottom-left corner and
+    run a scenario so the table, the lane and the sources all have something in them. Open a row twice
+    to see the lane, and click a lane entry to see a stack.
+  </p>
+
+  <h2>Give it something to measure</h2>
+  <div class="runs">
+    <button id="btn-flip">Flip a class, 3s</button>
+    <button id="btn-text">Tick a counter, 3s</button>
+    <button id="btn-mass">Insert 500 nodes</button>
+    <button id="btn-recreate">Recreate the list</button>
+    <button id="btn-thrash">Force layout 50×</button>
+    <button id="btn-shift">Shift the layout</button>
+  </div>
+
+  <h2>Stage</h2>
+  <div class="stage">
+    <div id="content">
+      <p>Counter: <span id="counter">0</span> · <span id="badge">badge</span></p>
+      <div id="rows"></div>
+      <ul id="list"></ul>
+    </div>
+  </div>
+</div>
+
+<div id="theme-switch">
+  <button data-theme="current" aria-pressed="true">Shipped</button>
+  <button data-theme="chart" aria-pressed="false">Chart</button>
+  <button data-theme="glass" aria-pressed="false">Glass</button>
+</div>
+
+<script src="./scenarios.js"></script>
+<script src="../../dist/dom-pulse.js" data-autostart="false"></script>
+<script>
+  DomPulse.start({ exclude: '#theme-switch' });
+
+  const THEMES = {
+    /* The shipped theme, from src/hud/styles.ts — no override needed. */
+    current: '',
+
+    /* ---------- Chart: a paper readout clipped over the page ---------- */
+    chart: `
+      .panel{width:452px;font:12px/1.5 "IBM Plex Mono",ui-monospace,Menlo,monospace;color:#16283d;
+        background:#fffdfc;border:1px solid #d8c3c3;border-radius:6px;
+        box-shadow:0 1px 0 rgba(22,40,61,.05),0 26px 60px -22px rgba(22,40,61,.55)}
+      .head{background:#fff6f6;border-bottom:1px solid #d8c3c3;padding:8px 11px}
+      .title{font:600 11px/1 "IBM Plex Sans Condensed",sans-serif;letter-spacing:.2em;text-transform:uppercase;color:#c2334d}
+      .stats{color:#5b6b7c}.stats b{color:#16283d;font-weight:600}
+      .head button{color:#96a3b0}.head button:hover{color:#16283d}.head button.on{color:#c2334d}
+      .settings{background:#fffaf9;border-bottom:1px solid #e9d6d6;padding:8px 11px;gap:8px 14px}
+      .settings input{background:#fff;border:1px solid #d8c3c3;color:#16283d;border-radius:3px}
+      .body{background:#fffdfc}
+      th{font:600 10px/1.9 "IBM Plex Sans Condensed",sans-serif;letter-spacing:.14em;text-transform:uppercase;
+        color:#8c99a6;background:#fffdfc;border-bottom:1px solid #d8c3c3;padding:5px 8px}
+      th.sorted{color:#c2334d}
+      td{padding:4px 8px;border-bottom:1px dotted #eddede}
+      tr[data-i]:hover{background:#fdf3f3}tr.sel{background:#fbe7ea}tr.hot td.el{color:#c2334d;font-weight:600}
+      .empty{color:#a3aeb9}
+      .lane{border-top:1px solid #d8c3c3;background:#fffaf9;padding:7px 11px}
+      .lane-title{font:600 11px/1 "IBM Plex Sans Condensed",sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#c2334d;margin-bottom:6px}
+      .ev{border-bottom:1px dotted #eddede;padding:3px 0}
+      .k.childList{color:#118a44}.k.attributes{color:#1d5fc4}.k.characterData{color:#9a6b00}
+      .ev .tog{color:#a3aeb9}
+      .ev-detail{border-bottom:1px dotted #eddede;color:#5b6b7c}
+      .det-h{color:#16283d}.det-h b{color:#c2334d}
+      .frame .loc{color:#96a3b0}
+      .ev ins{color:#0e7a3c;background:#e6f6ec}.ev del{color:#b3202f;background:#fdeaec}
+      .ev mark{background:#fdeec2;color:#7a5a00}
+      .meta{color:#7c8996}
+      .sources{border-top:1px solid #d8c3c3;background:#fffdfc;padding:5px 0}
+      .src{padding:3px 11px}.src:hover{background:#fdf3f3}.src.active{background:#fbe7ea;color:#c2334d}
+      .badge{font:500 12px/1 "IBM Plex Mono",monospace;background:#fffdfc;color:#16283d;
+        border:1px solid #d8c3c3;box-shadow:0 14px 34px -14px rgba(22,40,61,.5);padding:8px 13px}
+      .badge small{color:#8c99a6}
+    `,
+
+    /* ---------- Glass: quiet enough to belong to the browser, not the page ---------- */
+    glass: `
+      .panel{width:436px;font:12px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+        color:#f2f4f7;background:rgba(20,22,27,.72);-webkit-backdrop-filter:blur(22px) saturate(1.4);
+        backdrop-filter:blur(22px) saturate(1.4);border:1px solid rgba(255,255,255,.12);border-radius:12px;
+        box-shadow:0 22px 60px -18px rgba(0,0,0,.65),inset 0 1px 0 rgba(255,255,255,.09)}
+      .head{background:transparent;border-bottom:1px solid rgba(255,255,255,.09);padding:9px 12px}
+      .title{font-weight:600;font-size:12px;letter-spacing:-.01em;color:#fff}
+      .stats{color:rgba(242,244,247,.55);font-variant-numeric:tabular-nums}
+      .stats b{color:#fff;font-weight:600}
+      .head button{color:rgba(242,244,247,.5);padding:0 6px;border-radius:5px}
+      .head button:hover{color:#fff;background:rgba(255,255,255,.1)}
+      .head button.on{color:#ffd166}
+      .settings{border-bottom:1px solid rgba(255,255,255,.09);padding:9px 12px;gap:8px 14px}
+      .settings input{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);
+        color:#fff;border-radius:6px;padding:3px 7px}
+      th{font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+        color:rgba(242,244,247,.45);background:rgba(20,22,27,.9);border-bottom:1px solid rgba(255,255,255,.09);padding:6px 10px}
+      th.sorted{color:#fff}
+      td{padding:5px 10px;font-variant-numeric:tabular-nums;
+        font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+      td.el{font-family:inherit}
+      tr[data-i]:hover{background:rgba(255,255,255,.06)}
+      tr.sel{background:rgba(96,165,250,.18)}
+      tr.hot td.el{color:#ff9b8a}
+      .empty{color:rgba(242,244,247,.35)}
+      .lane{border-top:1px solid rgba(255,255,255,.09);padding:8px 12px;
+        font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+      .lane-title{font-family:inherit;font-weight:600;color:#fff;margin-bottom:6px}
+      .ev{border-bottom:1px solid rgba(255,255,255,.06);padding:3px 0}
+      .k{border-radius:4px;padding:0 5px;min-width:0;margin-right:5px;font-size:10.5px;font-weight:600}
+      .k.childList{color:#86efac;background:rgba(34,197,94,.16)}
+      .k.attributes{color:#93c5fd;background:rgba(59,130,246,.16)}
+      .k.characterData{color:#fde68a;background:rgba(234,179,8,.16)}
+      .ev .tog{color:rgba(242,244,247,.4)}
+      .ev-detail{border-bottom:1px solid rgba(255,255,255,.06);color:rgba(242,244,247,.55)}
+      .det-h{color:rgba(242,244,247,.8)}.det-h b{color:#fff}
+      .frame .loc{color:rgba(242,244,247,.35)}
+      .ev ins{color:#86efac}.ev del{color:#fca5a5}
+      .ev mark{background:rgba(234,179,8,.2);color:#fde68a}
+      .meta{color:rgba(242,244,247,.5)}
+      .sources{border-top:1px solid rgba(255,255,255,.09);padding:5px 0}
+      .src{padding:4px 12px;border-radius:0}
+      .src:hover{background:rgba(255,255,255,.06)}
+      .src.active{background:rgba(96,165,250,.18)}
+      .badge{font:600 12px/1 -apple-system,system-ui,sans-serif;background:rgba(20,22,27,.72);
+        -webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px);color:#fff;
+        border:1px solid rgba(255,255,255,.12);box-shadow:0 16px 40px -14px rgba(0,0,0,.6);padding:8px 14px}
+      .badge small{color:rgba(242,244,247,.55)}
+    `,
+  };
+
+  const shadow = document.querySelector('[data-dom-pulse="hud"]').shadowRoot;
+  const themeTag = document.createElement('style');
+  shadow.appendChild(themeTag);
+
+  for (const btn of document.querySelectorAll('#theme-switch button')) {
+    btn.addEventListener('click', () => {
+      themeTag.textContent = THEMES[btn.dataset.theme];
+      for (const b of document.querySelectorAll('#theme-switch button')) {
+        b.setAttribute('aria-pressed', String(b === btn));
+      }
+    });
+  }
+</script>
+</body>
+</html>
